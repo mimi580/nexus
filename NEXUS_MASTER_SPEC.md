@@ -120,7 +120,20 @@ Evaluation/Learning, Audit, Execution, Dashboard.
 11. **Follow-up:** bounded sequences, stop on opt-out/complaint/closure
     and avoid duplicates.
 12. **Learning:** measure conversion, margin, response, cost, market,
-    segment, product, message and model performance.
+    segment, product, message and model performance, and feed the
+    results back into every repeated decision (see §20).
+13. **Landing pages and inbound leads:** one page per product line and
+    country, written only from catalogue, price-book and licence facts;
+    enquiries become deals, are acknowledged immediately and quoted
+    through the human-approved reply path.
+14. **Advertising:** Google Search and Meta campaigns for every product
+    line except pharmaceuticals (never advertised). Plan markets, angles,
+    keywords and budgets from observed results; check every ad for
+    platform limits, fact support and prohibited claims; launch with
+    operator approval by default; book spend against the ads budget and
+    pause at its limit; prune losing ads, reallocate budget within
+    bounds, add negative search terms; report enquiries and wins back to
+    the platforms as conversions.
 
 ## 7. Opportunity Lifecycle
 
@@ -235,7 +248,8 @@ separate from external providers.
 
 Show objectives, leads, qualified leads, opportunities, responses,
 outreach, pipeline, estimated margin, spending, budget remaining, tasks,
-decisions, blocked actions, errors and learning metrics. Provide
+decisions, blocked actions, errors, learning metrics and what has been
+learned, landing pages, enquiries and ad campaigns. Provide
 pause/resume, category/geography pause and emergency stop.
 
 ## 19. Reliability
@@ -251,6 +265,14 @@ revenue/pipeline, gross margin, cost per qualified lead,
 country/segment/product/message/model performance. Strategy changes are
 versioned, evaluated, monitored and reversible. Do not implement
 uncontrolled self-modifying source code.
+
+Real self-improvement: repeated choices (e-mail angle and subject style,
+outreach order, market attractiveness, supplier regions, ad angles,
+markets and budgets) are made by Thompson sampling over observed
+outcomes. Opportunity scoring weights are refitted weekly on contacted
+deals, activated only when they rank better under cross-validation,
+moved in bounded steps, and rolled back automatically when they do
+worse on later deals; the operator can roll back at any time.
 
 ## 21. Testing
 

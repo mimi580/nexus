@@ -261,4 +261,31 @@ holds every outreach e-mail for approval during the first weeks.
 - One worker process; the scheduler is database-driven (enough at NEXUS
   volumes).
 - Currency: offers and prices are entered in USD.
-- The learning loop proposes parameter changes; activating them is manual.
+- Ads: platform ad-review (disapproval) status is not read; keywords and
+  pages are English; non-USD ad accounts rely on operator-set FX rates.
+
+## 17. v0.3 additions: advertising, landing pages, self-improvement
+
+- `app/site/`: landing pages from facts (`pages.py`), server-rendered HTML
+  with no external assets (`render.py`), enquiry intake with attribution,
+  consent, honeypot and rate limit, and the inbound lead and quote agents
+  (`leads.py`). Public routes `/p/{slug}`, `/p/{slug}/enquiry`,
+  `/p/{slug}/wa`, `/privacy`, `/site`; optional customer domain through
+  `deploy/sites/*.caddy`.
+- `app/ads/`: `platforms.py` (Google Ads REST v25, Meta Marketing API
+  v26.0, simulator; everything created paused and enabled when complete),
+  `compliance.py` (limits, claim rules, pharma exclusion), `copy.py`
+  (angles gated by facts, templates, keywords and negatives), `creative.py`
+  (Pillow cards, photo normalisation), `agents.py` (planner, launch,
+  sync + budget guard, optimiser, budget reallocation, conversions, jobs).
+  Policy R-ADS-00..03; review kind `ad_campaign`.
+- `app/learning/`: `bandits.py` (Beta/Gamma arms, Thompson sampling),
+  `signals.py` (one definition of lead / positive reply / win),
+  `loop.py` (e-mail variants, outreach priority, market blending, supplier
+  regions, scoring refit with cross-validation, bounded steps, automatic
+  and manual rollback, dashboard snapshot). The learning agent runs the
+  weekly refit and rollback check.
+- Budget: default USD 500/month with an `ads` line of 300; ad spend reported
+  by the platforms is booked with `record_incurred`.
+- Tests: `test_ads.py`, `test_site.py`, `test_learning.py`; the simulation
+  asserts pages, campaigns on both platforms and enquiries.
