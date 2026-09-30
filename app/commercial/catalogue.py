@@ -338,6 +338,8 @@ def offer_as_dict(offer: SupplierOffer, session: Session) -> dict[str, Any]:
         "valid_until": offer.valid_until.isoformat() if offer.valid_until else None,
         "source": offer.source,
         "active": offer.active,
+        "status": offer.status,
+        "currency": offer.currency,
     }
 
 

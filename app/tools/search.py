@@ -37,6 +37,18 @@ class SearchHit:
     rank: int
 
 
+@dataclass(frozen=True)
+class PlaceHit:
+    """A business listing (Google Maps via Serper): name, address, website, phone, type."""
+
+    name: str
+    address: str
+    website: str
+    phone: str
+    category: str
+    rank: int
+
+
 class SearchProvider(Protocol):
     name: str
 
@@ -132,15 +144,49 @@ class SerperSearch:
             if r.get("link")
         ]
 
+    PLACES_URL = "https://google.serper.dev/places"
+
+    def places(self, query: str, *, country: str | None = None, count: int = 10) -> list[PlaceHit]:
+        payload: dict = {"q": query}
+        code = COUNTRY_CODES.get(country or "")
+        if code:
+            payload["gl"] = code.lower()
+        try:
+            response = httpx.post(
+                self.PLACES_URL, json=payload, timeout=self.timeout,
+                headers={"X-API-KEY": self._key, "Content-Type": "application/json"},
+            )
+        except httpx.HTTPError as exc:
+            raise ProviderUnavailable("serper places request failed", error=str(exc)) from exc
+        data = _check(response, self.name)
+        return [
+            PlaceHit(name=p.get("title", ""), address=p.get("address", ""), website=p.get("website", "") or "",
+                     phone=p.get("phoneNumber", "") or "", category=p.get("category", "") or "", rank=i)
+            for i, p in enumerate((data.get("places") or [])[:count], start=1)
+            if p.get("title")
+        ]
+
 
 class StaticSearch:
     """Deterministic provider for tests: maps query substrings to hits."""
 
     name = "static"
 
-    def __init__(self, results: dict[str, list[SearchHit]] | None = None) -> None:
+    def __init__(self, results: dict[str, list[SearchHit]] | None = None,
+                 places_results: dict[str, list[PlaceHit]] | None = None) -> None:
         self.results = results or {}
+        self.places_results = places_results
         self.queries: list[str] = []
+
+    def places(self, query: str, *, country: str | None = None, count: int = 10) -> list[PlaceHit]:
+        if self.places_results is None:
+            raise AttributeError("places not supported")
+        self.queries.append("places:" + query)
+        hits: list[PlaceHit] = []
+        for needle, found in self.places_results.items():
+            if needle.lower() in query.lower():
+                hits.extend(found)
+        return hits[:count]
 
     def search(self, query: str, *, country: str | None = None, count: int = 8) -> list[SearchHit]:
         self.queries.append(query)

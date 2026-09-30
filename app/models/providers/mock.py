@@ -216,6 +216,88 @@ class MockProvider(BaseProvider):
         lines += ["", "I will confirm anything else you need in writing.", "", f"Regards,\n{ctx.get('sender_name', 'NEXUS Sourcing')}"]
         return {"subject": f"Re: {str(ctx.get('product_category', 'your enquiry')).replace('_', ' ')}", "body": "\n".join(lines)}
 
+    @staticmethod
+    def _slug(name: str) -> str:
+        return "".join(ch for ch in name.lower() if ch.isalnum())[:40]
+
+    def _supplier_discovery(self, ctx: dict, rng: random.Random) -> dict:
+        category = ctx.get("product_category")
+        return {"suppliers": [
+            {"name": s["name"], "country": s["country"], "website_url": f"https://{self._slug(s['name'])}.example/",
+             "supplier_type": "distributor", "evidence_quote": f"wholesale {str(category).replace('_', ' ')}"}
+            for s in fixtures.SUPPLIERS if category in s["categories"]
+        ]}
+
+    def _supplier_profile(self, ctx: dict, rng: random.Random) -> dict:
+        category = ctx.get("product_category")
+        name = ctx.get("supplier") or "supplier"
+        return {
+            "products": [f"wholesale {str(category).replace('_', ' ')}"],
+            "certifications": fixtures.SUPPLIER_CERTIFICATIONS.get(category, []),
+            "export_evidence": ["we export to East Africa"],
+            "address": "Free Zone warehouse, unit 12",
+            "contact": {"email": f"sales@{self._slug(name)}.example", "full_name": None, "role": None},
+        }
+
+    def _supplier_rfq(self, ctx: dict, rng: random.Random) -> dict:
+        items = ctx.get("items") or [{}]
+        item = items[0]
+        greeting = f"Dear {ctx.get('contact_name')}," if ctx.get("contact_name") else "Dear Sales Team,"
+        if ctx.get("follow_up_number"):
+            body = (f"{greeting}\n\nFollowing up on our request for quotation. We would still welcome your "
+                    f"prices and terms.\n\nRegards,\n{ctx.get('sender_name')}")
+            return {"subject": "Following up: request for quotation", "body": body}
+        docs = ctx.get("documents_needed") or []
+        lines = [
+            greeting, "",
+            f"{ctx.get('our_business')} is sourcing {item.get('description')} for buyers in "
+            f"{', '.join(item.get('buyer_countries') or ['East Africa'])}.",
+            f"Please quote for about {item.get('quantity')} units per order, delivery {ctx.get('delivery')}.",
+            "Please include: " + "; ".join(ctx.get("please_quote") or []) + ".",
+        ]
+        if ctx.get("license_statement"):
+            lines.append(f"{ctx['license_statement']}.")
+        if docs:
+            lines.append("Please confirm you can provide: " + ", ".join(docs) + ".")
+        lines += ["This is a request for prices, not an order.", "",
+                  "If you would rather not receive requests from us, reply 'unsubscribe'.", "",
+                  f"Regards,\n{ctx.get('sender_name')}"]
+        return {"subject": "Request for quotation", "body": "\n".join(lines)}
+
+    def _supplier_classify(self, ctx: dict, rng: random.Random) -> dict:
+        text = (ctx.get("reply_text") or "").lower()
+        if "unsubscribe" in text or "remove me" in text:
+            return {"category": "unsubscribe", "confidence": 0.9}
+        if "not able to supply" in text or "do not stock" in text:
+            return {"category": "not_supplying", "confidence": 0.9}
+        if "per unit" in text and "usd" in text:
+            return {"category": "quote", "confidence": 0.9}
+        if "?" in text:
+            return {"category": "question", "confidence": 0.8}
+        return {"category": "other", "confidence": 0.4}
+
+    def _supplier_quote(self, ctx: dict, rng: random.Random) -> dict:
+        import re as _re
+
+        text = ctx.get("email_text") or ""
+
+        def grab(pattern: str):
+            match = _re.search(pattern, text, _re.I)
+            return match.group(1) if match else None
+
+        price = grab(r"USD\s*([\d.]+)\s*per unit")
+        if not price:
+            return {"lines": []}
+        docs = grab(r"Documents:\s*([^.]+)\.")
+        return {"lines": [{
+            "product_name": f"{str(ctx.get('product_category')).replace('_', ' ')} (as quoted)",
+            "unit_price": float(price), "currency": "USD",
+            "moq": grab(r"MOQ\s*(\d+)"), "quantity_available": grab(r"(\d+) units available"),
+            "lead_time_days": grab(r"lead time (\d+) days"), "incoterm": "FOB",
+            "payment_terms": grab(r"Payment:\s*([^.]+)\."),
+            "documents": [d.strip() for d in docs.split(",")] if docs else [],
+        }]}
+
     def _classify(self, ctx: dict, rng: random.Random) -> dict:
         text = (ctx.get("reply_text") or "").lower()
         rules = [
@@ -252,6 +334,11 @@ class MockProvider(BaseProvider):
         "sales_strategy": "_strategy",
         "outreach_copy": "_outreach",
         "reply_draft": "_reply",
+        "supplier_discovery": "_supplier_discovery",
+        "supplier_profile": "_supplier_profile",
+        "supplier_rfq_copy": "_supplier_rfq",
+        "supplier_reply_classification": "_supplier_classify",
+        "supplier_quote_extraction": "_supplier_quote",
         "response_classification": "_classify",
         "learning_review": "_learning",
     }

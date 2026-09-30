@@ -40,7 +40,15 @@ class SourcingAgent(BaseAgent):
             review_key=review_key,
             reasons=[reason],
         )
-        return self.ok(output={"parked": marker}, notes=[reason])
+        next_tasks = []
+        if marker == AWAITING_OFFER:
+            # Go and find suppliers for this line now (at most once a day).
+            next_tasks.append({
+                "agent": "supplier_research",
+                "input": {"product_category": opportunity.product_category, "trigger": ctx.now.strftime("%Y-%m-%d")},
+                "priority": 66,
+            })
+        return self.ok(output={"parked": marker}, notes=[reason], next_tasks=next_tasks)
 
     def run(self, ctx: RunContext, task_input: dict) -> AgentResult:
         opportunity = ctx.session.get(Opportunity, task_input["opportunity_id"])

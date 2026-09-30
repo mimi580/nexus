@@ -122,6 +122,16 @@ class ObjectiveStatusIn(BaseModel):
     status: str
 
 
+class SupplierStatusIn(BaseModel):
+    status: str
+    note: str = ""
+
+
+class SupplierResearchIn(BaseModel):
+    product_category: str
+    regions: list[str] = Field(default_factory=list)
+
+
 class DecisionIn(BaseModel):
     decision: str
     note: str = ""
@@ -248,6 +258,12 @@ def state(_: str = Operator) -> dict[str, Any]:
             "compliance": compliance,
             "metrics": metrics(ctx, window_days=30),
             "licenses": [lic_as_dict(lic, ctx.now.date()) for lic in list_licenses(session)],
+            "suppliers": {
+                status or "none": count
+                for status, count in session.execute(
+                    select(Company.status, func.count()).where(Company.kind == "supplier").group_by(Company.status)
+                ).all()
+            },
         }
 
 
@@ -374,7 +390,8 @@ def list_opportunities(stage: str | None = None, limit: int = 100, _: str = Oper
                 "category": opp.product_category,
                 "stage": opp.stage,
                 "score": round(opp.score or 0.0, 3),
-                "contact": {"name": contact.full_name, "email": contact.email, "source": contact.source} if contact else None,
+                "contact": {"name": contact.full_name, "email": contact.email, "source": contact.source,
+                            "role": contact.role, "linkedin_url": contact.linkedin_url} if contact else None,
                 "estimated_value_usd": opp.estimated_value_usd,
                 "estimated_margin_usd": opp.estimated_margin_usd,
                 "economics": opp.economics,
@@ -396,6 +413,75 @@ def report_outcome(opportunity_id: str, payload: OutcomeIn, actor: str = Operato
         except queue.ReviewError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {"id": outcome.id, "result": outcome.result}
+
+
+# ------------------------------------------------------------------ suppliers
+
+
+@app.get("/api/suppliers")
+def list_suppliers(status: str | None = None, _: str = Operator) -> list[dict]:
+    from app.database.models import SupplierRFQ
+
+    with session_scope() as session:
+        query = select(Company).where(Company.kind == "supplier").order_by(desc(Company.score)).limit(500)
+        if status:
+            query = query.where(Company.status == status)
+        rows = []
+        for company in session.scalars(query):
+            contact = session.scalar(
+                select(Contact).where(Contact.company_id == company.id).order_by(desc(Contact.confidence))
+            )
+            rfq = session.scalar(
+                select(SupplierRFQ).where(SupplierRFQ.company_id == company.id).order_by(desc(SupplierRFQ.created_at))
+            )
+            profile = company.profile or {}
+            rows.append({
+                "id": company.id, "name": company.name, "country": company.country, "website": company.domain,
+                "status": company.status, "score": company.score, "type": company.segment,
+                "categories": profile.get("categories", []),
+                "certifications": profile.get("certifications", []),
+                "red_flags": profile.get("red_flags", []),
+                "products": profile.get("products", [])[:3],
+                "contact": {"name": contact.full_name, "email": contact.email, "opted_out": contact.opted_out} if contact else None,
+                "rfq": {"status": rfq.status, "category": rfq.product_category, "followups": rfq.followups_sent,
+                        "sent_at": rfq.last_sent_at.isoformat() if rfq.last_sent_at else None} if rfq else None,
+                "source": company.source,
+            })
+        return rows
+
+
+@app.post("/api/suppliers/{company_id}/status")
+def set_supplier_status(company_id: str, payload: SupplierStatusIn, actor: str = Operator) -> dict:
+    allowed = {"blocked", "qualified", "lead", "approved"}
+    if payload.status not in allowed:
+        raise HTTPException(status_code=422, detail=f"status must be one of {sorted(allowed)}")
+    with session_scope() as session:
+        ctx = build_context(session)
+        company = session.get(Company, company_id)
+        if company is None or company.kind != "supplier":
+            raise HTTPException(status_code=404, detail="no such supplier")
+        company.status = payload.status
+        if payload.status == "blocked":
+            company.opted_out = True  # never contacted again
+        ctx.audit.record("supplier_status", summary=f"{company.name}: {payload.status}", decision="allow",
+                         actor=actor, note=payload.note)
+        return {"id": company.id, "status": company.status}
+
+
+@app.post("/api/suppliers/research")
+def start_supplier_research(payload: SupplierResearchIn, actor: str = Operator) -> dict:
+    if payload.product_category not in {c.value for c in ProductCategory}:
+        raise HTTPException(status_code=422, detail="unknown product category")
+    with session_scope() as session:
+        ctx = build_context(session)
+        task, created = ctx.tasks.create_task(
+            agent="supplier_research", objective_id=None,
+            task_input={"product_category": payload.product_category, "regions": payload.regions,
+                        "requested_at": ctx.now.isoformat()},
+            priority=80,
+        )
+        ctx.audit.record("supplier_research_requested", summary=payload.product_category, decision="allow", actor=actor)
+        return {"task_id": task.id, "queued": created}
 
 
 # ------------------------------------------------------------------ catalogue and settings

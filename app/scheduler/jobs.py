@@ -243,6 +243,50 @@ def catalogue_recheck(ctx: RunContext) -> dict:
     return {"resumed": resumed, "gaps_closed": len(closed_gaps)}
 
 
+def supplier_research_refresh(ctx: RunContext) -> dict:
+    """Weekly: look for new suppliers for every product line in an active objective."""
+    created = 0
+    bucket = ctx.now.strftime("%Y-%W")
+    categories = set()
+    for objective in ctx.session.scalars(select(Objective).where(Objective.status == "active")):
+        categories.update((objective.constraints or {}).get("product_categories", []))
+    for category in sorted(categories):
+        _, new = ctx.tasks.create_task(
+            agent="supplier_research", objective_id=None, task_input={"product_category": category},
+            priority=60, idempotency_key=stable_key("supplier_research", category, bucket),
+        )
+        created += int(new)
+    return {"tasks_created": created}
+
+
+def supplier_followups(ctx: RunContext) -> dict:
+    """Follow up unanswered RFQs; after the last one, mark the supplier unresponsive."""
+    from app.database.models import Company, SupplierRFQ
+
+    created = closed = 0
+    due = ctx.session.scalars(
+        select(SupplierRFQ).where(SupplierRFQ.status == "sent", SupplierRFQ.next_followup_at.is_not(None),
+                                  SupplierRFQ.next_followup_at <= ctx.now)
+    )
+    for rfq in due:
+        if rfq.followups_sent >= ctx.settings.supplier_rfq_max_followups:
+            rfq.status = "no_response"
+            rfq.next_followup_at = None
+            company = ctx.session.get(Company, rfq.company_id)
+            if company is not None and company.status == "rfq_sent":
+                company.status = "unresponsive"
+            closed += 1
+            continue
+        step = rfq.followups_sent + 1
+        _, new = ctx.tasks.create_task(
+            agent="supplier_rfq", objective_id=None, task_input={"rfq_id": rfq.id, "step": step},
+            priority=57, idempotency_key=stable_key("supplier_rfq_followup", rfq.id, step),
+        )
+        created += int(new)
+    ctx.session.flush()
+    return {"tasks_created": created, "closed": closed}
+
+
 DEFAULT_JOBS = {
     "market_research_refresh": (refresh_market_research, 7 * 24 * 3600),
     "process_inbound": (process_inbound, 900),
@@ -254,4 +298,6 @@ DEFAULT_JOBS = {
     "license_expiry_check": (license_expiry_check, 24 * 3600),
     "catalogue_recheck": (catalogue_recheck, 6 * 3600),
     "notify_reviews": (notify_reviews, 900),
+    "supplier_research_refresh": (supplier_research_refresh, 7 * 24 * 3600),
+    "supplier_followups": (supplier_followups, 3600),
 }

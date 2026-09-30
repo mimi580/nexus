@@ -60,6 +60,20 @@ class SimulatedEmailProvider:
 
         self.sent.append({"to": to, "subject": subject, "body": body})
         category = (context or {}).get("product_category")
+        if (context or {}).get("counterparty") == "supplier":
+            labels = [label for label, _ in fixtures.SUPPLIER_RESPONSE_MIX]
+            weights = [weight for _, weight in fixtures.SUPPLIER_RESPONSE_MIX]
+            outcome = rng.choices(labels, weights=weights, k=1)[0]
+            reply = {
+                "quote": fixtures.sim_supplier_quote(category, rng) if category else None,
+                "question": fixtures.SUPPLIER_QUESTION,
+                "not_supplying": fixtures.SUPPLIER_DECLINE,
+            }.get(outcome)
+            return SendResult(
+                ok=True, provider=self.name, provider_message_id=new_id("sim"), simulated=True,
+                simulated_reply=reply, simulated_reply_category=outcome if reply else None,
+                reply_delay_hours=round(rng.uniform(4, 72), 1) if reply else None,
+            )
         mix = fixtures.RESPONSE_MIX.get(category) or fixtures.RESPONSE_MIX[
             fixtures.ProductCategory.LAPTOP.value
         ]

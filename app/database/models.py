@@ -91,6 +91,13 @@ class Company(Base, TimestampMixin):
     source: Mapped[str | None] = mapped_column(String(200))
     opted_out: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # "buyer" (default) or "supplier". Supplier leads carry a research profile
+    # and move through their own status: lead -> qualified -> rfq_sent ->
+    # quoted -> approved (or declined / rejected / unresponsive / blocked).
+    kind: Mapped[str] = mapped_column(String(20), default="buyer", index=True)
+    status: Mapped[str | None] = mapped_column(String(30), index=True)
+    profile: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    score: Mapped[float | None] = mapped_column(Float)
 
 
 class Contact(Base, TimestampMixin):
@@ -108,6 +115,7 @@ class Contact(Base, TimestampMixin):
     opted_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     bounced: Mapped[bool] = mapped_column(Boolean, default=False)
     source: Mapped[str | None] = mapped_column(String(200))
+    linkedin_url: Mapped[str | None] = mapped_column(String(300))
 
 
 class Product(Base, TimestampMixin):
@@ -177,6 +185,30 @@ class SupplierOffer(Base, TimestampMixin):
     source: Mapped[str] = mapped_column(String(500))
     notes: Mapped[str] = mapped_column(Text, default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    # "active", or "pending_review" for offers read from a supplier's e-mail
+    # that the operator has not yet checked (never used for pricing until then).
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    rfq_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+
+
+class SupplierRFQ(Base, TimestampMixin):
+    """A request for quotation sent to a supplier lead, and what came of it."""
+
+    __tablename__ = "supplier_rfqs"
+    id: Mapped[str] = _pk("rfq")
+    dedupe_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id"), index=True)
+    contact_id: Mapped[str | None] = mapped_column(ForeignKey("contacts.id"))
+    product_category: Mapped[str] = mapped_column(String(50), index=True)
+    items: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    destination: Mapped[str | None] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(30), default="drafted", index=True)
+    followups_sent: Mapped[int] = mapped_column(Integer, default=0)
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_followup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    first_message_id: Mapped[str | None] = mapped_column(String(40))
+    reply_message_id: Mapped[str | None] = mapped_column(String(40))
 
 
 class PriceReference(Base, TimestampMixin):

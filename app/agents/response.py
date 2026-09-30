@@ -14,7 +14,7 @@ from app.core.types import (
     ResponseCategory,
     STOP_FOLLOWUP_CATEGORIES,
 )
-from app.database.models import Contact, FollowUp, Interaction, Message, Opportunity, Outcome
+from app.database.models import Company, Contact, FollowUp, Interaction, Message, Opportunity, Outcome
 
 POSITIVE = {
     ResponseCategory.INTERESTED,
@@ -48,6 +48,12 @@ class ResponseAgent(BaseAgent):
             return self.ok(output={"already_processed": True})
         opportunity = ctx.session.get(Opportunity, message.opportunity_id) if message.opportunity_id else None
         contact = ctx.session.get(Contact, message.contact_id) if message.contact_id else None
+        if contact is not None:
+            company = ctx.session.get(Company, contact.company_id)
+            if company is not None and company.kind == "supplier":
+                from app.agents.suppliers import handle_supplier_reply
+
+                return handle_supplier_reply(self, ctx, message, contact, company)
 
         prompt = (
             "Classify this reply into exactly one category from: interested, information_request, "

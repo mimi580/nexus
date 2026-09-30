@@ -74,6 +74,7 @@
   <button data-tab="overview" class="active">Overview</button>
   <button data-tab="reviews">Reviews <span class="badge hidden" id="review-badge">0</span></button>
   <button data-tab="pipeline">Pipeline</button>
+  <button data-tab="suppliers">Suppliers</button>
   <button data-tab="catalogue">Catalogue</button>
   <button data-tab="licences">Licences</button>
   <button data-tab="settings">Settings</button>
@@ -126,6 +127,17 @@
       <select id="stage-filter"><option value="">All stages</option></select>
     </div>
     <section class="scroll"><table id="opp-table"></table></section>
+  </div>
+
+  <!-- SUPPLIERS -->
+  <div data-panel="suppliers" class="hidden">
+    <section style="margin-bottom:18px">
+      <h2>Find suppliers now</h2>
+      <p class="small muted">NEXUS also searches weekly, and immediately whenever a deal is waiting for a supplier offer. Qualified suppliers receive an RFQ built from your buyers' demand; their quotes arrive in Reviews for you to check before they enter the catalogue.</p>
+      <div class="row"><select id="sup-cat"></select><input id="sup-regions" placeholder="Regions (optional), e.g. United Arab Emirates, India" style="min-width:280px"><button id="sup-go" class="primary">Search</button></div>
+    </section>
+    <div class="row" style="margin-bottom:12px"><select id="sup-filter"><option value="">All suppliers</option><option>qualified</option><option>rfq_sent</option><option>quoted</option><option>approved</option><option>lead</option><option>declined</option><option>unresponsive</option><option>rejected</option><option>blocked</option></select></div>
+    <section class="scroll"><table id="sup-table"></table></section>
   </div>
 
   <!-- CATALOGUE -->
@@ -298,7 +310,7 @@ async function loadReviews() {
   const items = await api("/api/reviews?status=" + el("review-filter").value);
   el("review-list").innerHTML = items.length ? items.map((i) => {
     const a = i.action || {}; const o = i.opportunity;
-    const isSend = i.kind === "outreach_approval" || i.kind === "reply_approval";
+    const isSend = ["outreach_approval", "reply_approval", "supplier_rfq_approval"].includes(i.kind);
     const p = a.pricing;
     const decided = i.status !== "pending";
     return `<div class="card" data-id="${esc(i.id)}">
@@ -307,6 +319,12 @@ async function loadReviews() {
       ${o ? `<div class="small muted">${esc(o.company)} · ${esc(o.country)} · ${words(o.category)} · stage ${words(o.stage)}</div>${econLine(o.economics)}` : ""}
       ${(i.reasons || []).length ? `<ul style="margin-top:6px">${i.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
       ${a.their_message ? `<div class="small muted" style="margin-top:6px">They wrote:</div><div class="draft">${esc(a.their_message)}</div>` : (i.last_reply ? `<div class="small muted">Their latest reply:</div><div class="draft">${esc(i.last_reply.body)}</div>` : "")}
+      ${(a.offers || []).length ? `<div class="small muted" style="margin-top:6px">Lines read from the e-mail — check each against the message before activating:</div>
+        <div class="scroll"><table><tr><th>Product</th><th>Unit cost</th><th>MOQ / available</th><th>Terms</th><th>Documents</th></tr>
+        ${a.offers.map((o) => `<tr><td>${esc(o.product_name)}<div class="small muted">${esc(o.condition || "")}</div></td>
+          <td>${esc(o.currency || "USD")} ${esc((o.unit_cost_usd || []).join(" – "))}</td><td>${esc(o.moq ?? "—")} / ${esc(o.quantity_available ?? "—")}</td>
+          <td class="small">${esc([o.incoterm, o.payment_terms, o.lead_time_days ? o.lead_time_days + " days" : ""].filter(Boolean).join(" · "))}</td>
+          <td class="small">${esc((o.documents || []).join(", ") || "none stated")}</td></tr>`).join("")}</table></div>` : ""}
       ${p ? `<div class="draft small">Suggested price <b>${money(p.suggested_unit_price_usd)}</b>/unit for ${esc(p.quantity)} units · landed cost ${money(p.unit_landed_cost_usd)}/unit · floor at ${esc(p.min_margin_pct)}% margin ${money(p.floor_unit_price_usd)} · price book ${range(p.price_book_unit_usd)}<br><span class="muted">${esc(p.note)}</span></div>` : ""}
       ${a.body && isSend && !decided ? `<div class="small muted" style="margin-top:6px">To ${esc(a.to || "")} — edit before approving if needed:</div>
         <input class="edit-subject" value="${esc(a.subject || "")}" style="width:100%;margin:6px 0">
@@ -315,7 +333,7 @@ async function loadReviews() {
       ${decided ? `<div class="small muted">${esc(i.status)} by ${esc(i.decided_by)} ${esc((i.decided_at || "").slice(0, 16).replace("T", " "))}${i.decision_note ? " · " + esc(i.decision_note) : ""}</div>` : `
       <textarea class="note" placeholder="Note (optional): why, what you agreed, next step"></textarea>
       <div class="row" style="margin-top:8px">
-        ${isSend ? `<button class="primary" data-d="approve">Approve and send</button>` : `<button class="primary" data-d="resolve">Mark resolved</button>`}
+        ${isSend ? `<button class="primary" data-d="approve">Approve and send</button>` : i.kind === "supplier_quote" ? `<button class="primary" data-d="approve">Activate in catalogue</button>` : `<button class="primary" data-d="resolve">Mark resolved</button>`}
         <button class="danger" data-d="reject">Reject${o ? " (close deal)" : ""}</button>
       </div>`}
     </div>`;
@@ -341,7 +359,7 @@ async function loadPipeline() {
     (opps.length ? opps.map((o) => `<tr data-id="${esc(o.id)}">
       <td>${esc(o.company)}<div class="small muted">${esc(o.country)}${o.blocked_reason ? ` · <span class="warn-text">${esc(o.blocked_reason)}</span>` : ""}</div></td>
       <td>${words(o.category)}</td><td>${words(o.stage)}</td><td>${o.score}</td>
-      <td>${o.contact ? `${esc(o.contact.name)}<div class="small muted">${esc(o.contact.email || "")}</div>` : "—"}</td>
+      <td>${o.contact ? `${esc(o.contact.name)}<div class="small muted">${esc(o.contact.email || "")}</div>${(o.contact.linkedin_url || "").startsWith("https://") ? `<a class="small" href="${esc(o.contact.linkedin_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--flow)">LinkedIn profile</a>` : ""}` : "—"}</td>
       <td>${money(o.estimated_margin_usd)}</td>
       <td style="white-space:nowrap">${["won", "lost"].includes(o.stage) ? "" : `<button data-r="won">Won</button> <button data-r="lost">Lost</button>`}</td></tr>`).join("")
       : `<tr><td class="empty" colspan="7">No opportunities.</td></tr>`);
@@ -356,6 +374,27 @@ async function loadPipeline() {
   });
 }
 el("stage-filter").onchange = loadPipeline;
+
+// ------------------------------------------------------------------ suppliers
+el("sup-cat").innerHTML = CATEGORIES.map((c) => `<option value="${c}">${words(c)}</option>`).join("");
+el("sup-go").onclick = () => act(() => api("/api/suppliers/research", { method: "POST", body: JSON.stringify({
+  product_category: el("sup-cat").value, regions: csvList(el("sup-regions").value) }) }), "Supplier search queued; it runs on the next pass");
+el("sup-filter").onchange = () => loadSuppliers();
+async function loadSuppliers() {
+  const rows = await api("/api/suppliers" + (el("sup-filter").value ? "?status=" + el("sup-filter").value : ""));
+  el("sup-table").innerHTML = `<tr><th>Supplier</th><th>Lines</th><th>Score</th><th>Evidence</th><th>Contact</th><th>RFQ</th><th></th></tr>` +
+    (rows.length ? rows.map((r) => `<tr data-id="${esc(r.id)}">
+      <td>${esc(r.name)}<div class="small muted">${esc(r.country || "")}${r.website ? " · " + esc(r.website) : ""}</div><div class="small">${words(r.status)}</div></td>
+      <td class="small">${esc((r.categories || []).map((c) => c.replace(/_/g, " ")).join(", "))}</td>
+      <td>${r.score == null ? "—" : Number(r.score).toFixed(2)}</td>
+      <td class="small">${(r.certifications || []).length ? "Claims: " + esc(r.certifications.join(", ")) + " <span class='muted'>(unverified)</span><br>" : ""}${(r.red_flags || []).length ? `<span class="warn-text">${esc(r.red_flags.join("; "))}</span>` : ""}</td>
+      <td class="small">${r.contact ? esc(r.contact.email || "") : "—"}</td>
+      <td class="small">${r.rfq ? `${words(r.rfq.status)}${r.rfq.followups ? ` · ${r.rfq.followups} follow-up(s)` : ""}` : "—"}</td>
+      <td style="white-space:nowrap">${r.status === "blocked" ? "" : `<button data-s="blocked">Block</button>`} ${["lead", "rejected", "unresponsive"].includes(r.status) ? `<button data-s="qualified">Qualify</button>` : ""}</td></tr>`).join("")
+      : `<tr><td class="empty" colspan="7">No suppliers yet. Start a search above, or wait for the weekly run.</td></tr>`);
+  el("sup-table").querySelectorAll("button[data-s]").forEach((btn) => btn.onclick = () =>
+    act(() => api(`/api/suppliers/${btn.closest("tr").dataset.id}/status`, { method: "POST", body: JSON.stringify({ status: btn.dataset.s }) }), "Supplier updated").then(loadSuppliers));
+}
 
 // ------------------------------------------------------------------ catalogue
 async function loadCatalogue() {
@@ -423,6 +462,7 @@ async function loadTab() {
     if (activeTab === "reviews") await loadReviews();
     else if (activeTab === "pipeline") await loadPipeline();
     else if (activeTab === "catalogue") await loadCatalogue();
+    else if (activeTab === "suppliers") await loadSuppliers();
     else if (activeTab === "licences") await loadLicences();
     else if (activeTab === "settings" && !el("commercial").value) await loadSettings();
   } catch (e) { toast("Could not load: " + e.message); }
@@ -431,7 +471,7 @@ async function refresh() {
   try { state = await api("/api/state"); renderOverview(state); }
   catch (e) { toast("State unavailable: " + e.message); }
 }
-showTab(["overview", "reviews", "pipeline", "catalogue", "licences", "settings", "system"].includes(activeTab) ? activeTab : "overview");
+showTab(["overview", "reviews", "pipeline", "suppliers", "catalogue", "licences", "settings", "system"].includes(activeTab) ? activeTab : "overview");
 refresh();
 setInterval(refresh, 20000);
 </script>

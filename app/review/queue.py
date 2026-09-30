@@ -30,6 +30,8 @@ KIND_BY_EVENT = {
     "compliance_block": "compliance",
     "license_alert": "license",
     "catalogue_gap": "catalogue",
+    "supplier_quote_received": "supplier_quote",
+    "supplier_question": "supplier_reply",
     "research_gap": "research",
 }
 
@@ -38,12 +40,16 @@ class ReviewError(ValueError):
     pass
 
 
-EXECUTABLE_KINDS = {"outreach_approval", "reply_approval"}
+EXECUTABLE_KINDS = {"outreach_approval", "reply_approval", "supplier_rfq_approval", "supplier_quote"}
 
 
 def classify(event_type: str, action_kind: str | None) -> str:
     if action_kind == "send_reply":
         return "reply_approval"
+    if action_kind == "send_supplier_rfq":
+        return "supplier_rfq_approval"
+    if action_kind == "activate_offers":
+        return "supplier_quote"
     if action_kind in SEND_KINDS:
         return "outreach_approval"
     if action_kind in {"financial_commitment", "legal_commitment"}:
@@ -179,6 +185,29 @@ def decide(
     opportunity = session.get(Opportunity, item.opportunity_id) if item.opportunity_id else None
 
     follow_on: dict[str, Any] = {}
+    if item.kind == "supplier_quote":
+        from app.agents.suppliers import activate_offers
+        from app.database.models import SupplierOffer
+
+        offer_ids = list((item.action_payload or {}).get("offer_ids") or [])
+        if item.status == "approved":
+            try:
+                activated = activate_offers(ctx, offer_ids)
+            except ValueError as exc:
+                item.status = "pending"
+                item.decided_at = item.decided_by = None
+                raise ReviewError(str(exc)) from exc
+            follow_on = {"activated_offers": [o.id for o in activated]}
+        else:
+            for offer_id in offer_ids:
+                offer = session.get(SupplierOffer, offer_id)
+                if offer is not None and offer.status == "pending_review":
+                    offer.status = "rejected"
+            follow_on = {"discarded_offers": offer_ids}
+        ctx.audit.record("review_decided", summary=f"supplier_quote {item.status}: {item.title}",
+                         actor=actor, decision="allow", review_id=item.id, note=note, **follow_on)
+        session.flush()
+        return item
     if item.status == "approved":
         follow_on = _requeue_send(ctx, item)
     elif item.status == "rejected" and opportunity is not None:

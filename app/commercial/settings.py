@@ -46,6 +46,37 @@ DEFAULTS: dict[str, Any] = {
         ProductCategory.SERVER_IT.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Nigeria", "Egypt"],
         ProductCategory.IPHONE.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Romania", "Bulgaria", "Serbia", "Moldova"],
     },
+    # Public directories searched (through the search API, "site:" queries) in
+    # addition to the open web. The organisation's own site is always what
+    # contact details are taken from.
+    "directories": {
+        "buyer": ["ungm.org", "tenders.go.ke"],
+        "supplier": {
+            ProductCategory.LAPTOP.value: ["made-in-china.com", "indiamart.com", "europages.co.uk", "globalsources.com"],
+            ProductCategory.IPHONE.value: ["made-in-china.com", "globalsources.com", "europages.co.uk"],
+            ProductCategory.MEDICAL.value: ["dotmed.com", "europages.co.uk", "indiamart.com", "made-in-china.com"],
+            ProductCategory.PHARMA.value: ["indiamart.com", "tradeindia.com", "europages.co.uk"],
+            ProductCategory.SERVER_IT.value: ["europages.co.uk", "made-in-china.com", "indiamart.com"],
+        },
+    },
+    # Where supplier research looks, per category.
+    "supplier_regions": {
+        ProductCategory.LAPTOP.value: ["United Arab Emirates", "United States", "United Kingdom", "Germany", "China", "Kenya"],
+        ProductCategory.IPHONE.value: ["United Arab Emirates", "Hong Kong", "United States", "China"],
+        ProductCategory.MEDICAL.value: ["United States", "Germany", "Netherlands", "India", "China", "United Arab Emirates"],
+        ProductCategory.PHARMA.value: ["India", "China", "Kenya", "Egypt"],
+        ProductCategory.SERVER_IT.value: ["United Arab Emirates", "United States", "United Kingdom", "Netherlands", "Germany"],
+    },
+    # What an RFQ asks suppliers to quote for (quantities come from live demand).
+    "rfq_products": {
+        ProductCategory.LAPTOP.value: "business-class refurbished laptops (Dell Latitude, HP EliteBook/ProBook, Lenovo ThinkPad), Intel Core i5/i7 8th generation or newer, 8-16GB RAM, SSD",
+        ProductCategory.IPHONE.value: "used / refurbished Apple iPhones (iPhone 11 to current generations), grade A and B, unlocked",
+        ProductCategory.MEDICAL.value: "new or refurbished hospital equipment: patient monitors, ultrasound, ECG, laboratory analysers",
+        ProductCategory.PHARMA.value: "generic essential medicines and medical consumables for institutional supply",
+        ProductCategory.SERVER_IT.value: "refurbished enterprise servers (Dell PowerEdge, HPE ProLiant), storage and networking equipment",
+    },
+    "rfq_destination": "Nairobi, Kenya (CIF Mombasa or DAP Nairobi)",
+    "supplier_min_score": 0.5,
 }
 
 
@@ -110,6 +141,19 @@ def update(session: Session, changes: dict[str, Any]) -> dict[str, Any]:
                 if not isinstance(countries, list) or not all(isinstance(c, str) and c.strip() for c in countries):
                     raise CommercialSettingsError("target_markets values are lists of country names")
                 current[key][cat] = [canonical_country(c) for c in countries]
+        elif key in ("directories", "supplier_regions", "rfq_products"):
+            if not isinstance(value, dict):
+                raise CommercialSettingsError(f"{key} must be an object")
+            current[key] = {**current[key], **value}
+        elif key == "rfq_destination":
+            if not isinstance(value, str) or not value.strip():
+                raise CommercialSettingsError("rfq_destination is a place description, e.g. 'Nairobi, Kenya'")
+            current[key] = value.strip()
+        elif key == "supplier_min_score":
+            number = float(value)
+            if not 0 <= number <= 1:
+                raise CommercialSettingsError("supplier_min_score is between 0 and 1")
+            current[key] = number
         elif key == "transaction_cost_pct":
             rate = float(value)
             if not 0 <= rate < 0.5:

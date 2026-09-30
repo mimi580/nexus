@@ -55,6 +55,13 @@ class Orchestrator:
                 priority=90,
                 idempotency_key=stable_key("market_research", objective.id, category),
             )
+            self.ctx.tasks.create_task(
+                agent="supplier_research",
+                objective_id=objective.id,
+                task_input={"product_category": category},
+                priority=62,
+                idempotency_key=stable_key("supplier_research", objective.id, category),
+            )
         self.ctx.audit.record(
             "objective_created",
             summary=title,

@@ -133,6 +133,47 @@ class ResearchService:
         self.session.flush()
         return docs
 
+    # ------------------------------------------------------------ places
+    @property
+    def has_places(self) -> bool:
+        if self.provider is None or not hasattr(self.provider, "places"):
+            return False
+        return getattr(self.provider, "places_results", True) is not None
+
+    def places(self, query: str, *, country: str | None = None, count: int = 10) -> list[SourceDocument]:
+        """Business listings, stored like search results. One budgeted call per query."""
+        if not self.has_places:
+            return []
+        query = ("places: " + query.strip())[:480]
+        since = self.clock() - timedelta(days=SEARCH_CACHE_DAYS)
+        cached = list(self.session.scalars(
+            select(SourceDocument).where(SourceDocument.kind == "place", SourceDocument.query == query,
+                                         SourceDocument.retrieved_at >= since)
+        ))
+        if cached:
+            return cached
+        cost = float(self.settings.search_cost_per_query_usd)
+        reservation = self.budget.reserve("research_data", cost, f"places:{self.provider.name}")
+        try:
+            hits = self.provider.places(query[len("places: "):], country=country, count=count)
+        except Exception:
+            self.budget.release(reservation)
+            raise
+        self.budget.commit(reservation, cost)
+        docs = []
+        for hit in hits:
+            text = "\n".join(x for x in (hit.name, hit.address, hit.category, hit.website, hit.phone) if x)
+            doc = SourceDocument(
+                url=(hit.website or f"place:{hit.name}")[:1000],
+                domain=domain_of(hit.website)[:255] if hit.website else "",
+                title=hit.name[:500], kind="place", query=query, text=text,
+                content_hash=hashlib.sha256(text.encode()).hexdigest(), retrieved_at=self.clock(),
+            )
+            self.session.add(doc)
+            docs.append(doc)
+        self.session.flush()
+        return docs
+
     # ------------------------------------------------------------ fetch
     def fetch(self, url: str) -> SourceDocument | None:
         """A stored page, fetched if needed. None when the page is unavailable."""

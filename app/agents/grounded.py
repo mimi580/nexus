@@ -15,6 +15,7 @@ agents keep their simulated world; these functions only run with live research.
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from typing import Any
 
@@ -61,6 +62,20 @@ PROSPECT_QUERIES = {
         "{country} bank ICT infrastructure tender",
     ],
 }
+
+# Business-listing (Google Maps) searches for buyer types, per category.
+PLACE_QUERIES = {
+    ProductCategory.LAPTOP.value: ["university in {country}", "international school in {country}"],
+    ProductCategory.IPHONE.value: ["mobile phone wholesaler in {country}", "phone shop in {country}"],
+    ProductCategory.MEDICAL.value: ["hospital in {country}", "diagnostic centre in {country}"],
+    ProductCategory.PHARMA.value: ["pharmaceutical wholesaler in {country}", "pharmacy in {country}"],
+    ProductCategory.SERVER_IT.value: ["data centre in {country}", "bank head office in {country}"],
+}
+
+LINKEDIN_ROLE_WORDS = (
+    "procurement", "purchasing", "supply chain", "buyer", "sourcing", "pharmacist", "pharmacy",
+    "biomedical", "ict", " it ", "information technology", "operations", "logistics", "stores",
+)
 
 MARKET_QUERY = "{country} demand for {words} imports procurement {year}"
 
@@ -200,14 +215,58 @@ def discover_prospects(agent: Any, ctx: Any, task_input: dict) -> AgentResult:
 
     docs: list[SourceDocument] = []
     doc_country: dict[str, str] = {}
+    directories = (commercial.get(ctx.session)["directories"] or {}).get("buyer") or []
+    words = CATEGORY_WORDS.get(category, category)
     for country in countries:
-        for template in templates[:per_country]:
-            for doc in ctx.research.search(template.format(country=country), country=country, count=8):
+        queries = [t.format(country=country) for t in templates[:per_country]]
+        queries += [f"site:{d} {words} {country}" for d in directories[:2]]
+        for query in queries:
+            for doc in ctx.research.search(query, country=country, count=8):
                 if doc.id not in doc_country:
                     docs.append(doc)
                     doc_country[doc.id] = country
+
+    # Business listings: named organisations with their own websites, accepted
+    # directly (the listing itself is the source) when the website is theirs.
+    created = duplicates = rejected = listed = 0
+    next_tasks, evidence = [], []
+    if ctx.research.has_places:
+        week = int(ctx.now.strftime("%W"))
+        place_templates = PLACE_QUERIES.get(category, [])
+        for country in countries:
+            if not place_templates or created >= limit:
+                break
+            query = place_templates[week % len(place_templates)].format(country=country)
+            for place in ctx.research.places(query, country=country, count=10):
+                if created >= limit:
+                    break
+                website = place.domain if place.domain and not is_aggregator(place.domain) else None
+                if not website:
+                    continue
+                company, is_new = ctx.memory.upsert_company(
+                    name=place.title, domain=website, country=country,
+                    segment=None,
+                    source=place.url[:200], buying_signals=[],
+                )
+                opportunity, opp_new = ctx.memory.create_opportunity(
+                    company_id=company.id, product_category=category, objective_id=ctx.objective_id
+                )
+                created += int(is_new)
+                duplicates += int(not is_new)
+                listed += int(is_new)
+                evidence.append(agent.evidence(
+                    f"{company.name} listed as a business in {country} ({query})", source=place.url,
+                    kind=EvidenceKind.UNVERIFIED_CLAIM, confidence=0.5, subject_type="company",
+                    subject_id=company.id, source_type="web",
+                ))
+                if opp_new:
+                    next_tasks.append({"agent": "company_intelligence", "input": {"opportunity_id": opportunity.id}, "priority": 64})
+
     if not docs:
-        return agent.ok(output={"created": 0, "duplicates": 0, "rejected": 0}, notes=["searches returned nothing"])
+        agent.persist_evidence(ctx, evidence)
+        return agent.ok(output={"created": created, "duplicates": duplicates, "rejected": 0, "from_listings": listed},
+                        evidence=evidence, next_tasks=next_tasks,
+                        notes=["web searches returned nothing" + (f"; {listed} from business listings" if listed else "")])
 
     data, cost = agent.ask(
         ctx,
@@ -221,8 +280,6 @@ def discover_prospects(agent: Any, ctx: Any, task_input: dict) -> AgentResult:
         {"product_category": category, "countries": countries, "results": payload(docs, 600)},
     )
     lookup = _by_id(docs)
-    created = duplicates = rejected = 0
-    next_tasks, evidence = [], []
     for item in (data.get("prospects") or [])[: limit * 2]:
         if created + duplicates >= limit:
             break
@@ -270,7 +327,8 @@ def discover_prospects(agent: Any, ctx: Any, task_input: dict) -> AgentResult:
             )
     agent.persist_evidence(ctx, evidence)
     return agent.ok(
-        output={"created": created, "duplicates": duplicates, "rejected": rejected, "sources": len(docs)},
+        output={"created": created, "duplicates": duplicates, "rejected": rejected, "sources": len(docs),
+                "from_listings": listed},
         cost_usd=cost,
         evidence=evidence,
         next_tasks=next_tasks,
@@ -408,6 +466,9 @@ def decision_makers(agent: Any, ctx: Any, opportunity: Opportunity, company: Com
         return agent.ok(output={"contacts": 0}, cost_usd=cost, notes=["no address met the evidence rules"])
 
     named = full_name is not None
+    linkedin = None
+    if not named:
+        linkedin = _linkedin_person(ctx, company)
     record = ctx.memory.record_evidence(
         agent.evidence(
             f"{email} published on {source_doc.url}" + (f" for {full_name} ({role})" if named else ""),
@@ -429,10 +490,50 @@ def decision_makers(agent: Any, ctx: Any, opportunity: Opportunity, company: Com
         evidence_id=record.id,
         verified=True,
     )
+    if linkedin and contact.full_name == ROLE_MAILBOX_NAME:
+        # Address the right person by name, at the organisation's published mailbox.
+        contact.full_name = linkedin["name"]
+        contact.role = f"{linkedin['role']} (via published mailbox)"
+        contact.linkedin_url = linkedin["url"][:300]
+        ctx.memory.record_evidence(agent.evidence(
+            f"{linkedin['name']} is {linkedin['role']} at {company.name} (public LinkedIn search result)",
+            source=linkedin["url"], kind=EvidenceKind.UNVERIFIED_CLAIM, confidence=0.5,
+            subject_type="company", subject_id=company.id, source_type="web",
+        ))
     opportunity.contact_id = contact.id
     ctx.session.flush()
     return agent.ok(
-        output={"contact_id": contact.id, "named": named, "source": source_doc.url},
+        output={"contact_id": contact.id, "named": named or bool(linkedin), "source": source_doc.url,
+                "linkedin": bool(linkedin)},
         cost_usd=cost,
         next_tasks=[{"agent": "qualification", "input": {"opportunity_id": opportunity.id}, "priority": 60}],
     )
+
+
+def _linkedin_person(ctx: Any, company: Company) -> dict[str, str] | None:
+    """The procurement-relevant person at this organisation, from public LinkedIn
+    search results only (NEXUS never visits or scrapes LinkedIn itself).
+
+    Accepted only when the result names the organisation and the job title is
+    procurement-relevant. Used to address a published mailbox by name.
+    """
+    query = f'"{company.name}" procurement OR purchasing OR "supply chain" site:linkedin.com/in'
+    try:
+        results = ctx.research.search(query, country=company.country, count=5)
+    except Exception:  # enrichment is optional; never fail contact discovery over it
+        return None
+    for doc in results:
+        if "linkedin.com/in/" not in doc.url.lower():
+            continue
+        if not appears(company.name, _doc_text(doc)):
+            continue
+        parts = [p.strip() for p in re.split(r"\s[-\u2013|]\s", doc.title) if p.strip()]
+        if len(parts) < 2:
+            continue
+        name, role = parts[0], parts[1]
+        if not (2 <= len(name.split()) <= 4) or any(ch.isdigit() for ch in name):
+            continue
+        if not any(word.strip() in f" {role.lower()} " for word in LINKEDIN_ROLE_WORDS):
+            continue
+        return {"name": name[:120], "role": role[:120], "url": doc.url}
+    return None

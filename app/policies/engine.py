@@ -17,7 +17,7 @@ from app.budget.controller import BudgetController
 from app.core.config import Settings, get_settings
 from app.core.interfaces import ActionRequest, PolicyResult
 from app.core.types import ActionKind, Decision, REGULATED_CATEGORIES, RiskLevel, utcnow
-from app.database.models import Company, Contact, FollowUp, Message, SystemState
+from app.database.models import Company, Contact, FollowUp, Message, SupplierRFQ, SystemState
 from app.policies.fact_check import validate_message
 from app.policies.licenses import coverage
 from app.review.queue import approved_for, rejected
@@ -37,7 +37,9 @@ Rule = Callable[[ActionRequest, PolicyContext], PolicyResult | None]
 
 # Every kind of outbound message. Opt-out, duplicate, licence and fact checks
 # apply to all of them; rate limits and follow-up caps only to unsolicited mail.
-SEND_KINDS = (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP, ActionKind.SEND_REPLY)
+SEND_KINDS = (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP, ActionKind.SEND_REPLY, ActionKind.SEND_SUPPLIER_RFQ)
+# Messages to buyers: licence scope and regulatory checks apply to these.
+BUYER_SEND_KINDS = (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP, ActionKind.SEND_REPLY)
 
 
 def _block(rule: str, reason: str, risk: RiskLevel = RiskLevel.HIGH) -> PolicyResult:
@@ -105,7 +107,7 @@ def rule_license(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
     category = req.payload.get("product_category")
     if category not in {c.value for c in REGULATED_CATEGORIES}:
         return None
-    contact_kinds = SEND_KINDS
+    contact_kinds = BUYER_SEND_KINDS
     commitment_kinds = (ActionKind.FINANCIAL_COMMITMENT, ActionKind.LEGAL_COMMITMENT)
     if req.kind not in contact_kinds + commitment_kinds:
         return None
@@ -134,7 +136,9 @@ def rule_rejected_by_operator(req: ActionRequest, ctx: PolicyContext) -> PolicyR
 
 def rule_outreach_approval_mode(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
     """REQUIRE_OUTREACH_APPROVAL=true: the operator approves every unsolicited e-mail."""
-    if ctx.settings.require_outreach_approval and req.kind in (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP):
+    if ctx.settings.require_outreach_approval and req.kind in (
+        ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP, ActionKind.SEND_SUPPLIER_RFQ
+    ):
         return _escalate("R-APPR-01", "approval mode is on: every outreach e-mail waits for you", RiskLevel.LOW)
     return None
 
@@ -154,7 +158,7 @@ def rule_regulated(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | Non
     ):
         if not ctx.settings.allow_regulated_autonomous_transactions:
             return _escalate("R-REG-01", "regulated transaction requires compliance review")
-    if regulated and req.kind in SEND_KINDS:
+    if regulated and req.kind in BUYER_SEND_KINDS:
         if not req.payload.get("regulatory_checked"):
             return _escalate(
                 "R-REG-02",
@@ -237,6 +241,23 @@ def rule_rate_limits(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | N
     return None
 
 
+def rule_supplier_rfq_limits(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
+    """Supplier RFQs have their own daily cap and follow-up limit."""
+    if req.kind != ActionKind.SEND_SUPPLIER_RFQ:
+        return None
+    since = ctx.now - timedelta(days=1)
+    sent_today = ctx.session.scalar(
+        select(func.count()).select_from(SupplierRFQ).where(
+            SupplierRFQ.last_sent_at.is_not(None), SupplierRFQ.last_sent_at >= since
+        )
+    ) or 0
+    if sent_today >= ctx.settings.supplier_rfq_daily_limit:
+        return _block("R-RATE-03", "daily supplier RFQ limit reached", RiskLevel.MEDIUM)
+    if int(req.payload.get("step", 0)) > ctx.settings.supplier_rfq_max_followups:
+        return _block("R-FUP-03", "maximum supplier follow-ups reached", RiskLevel.LOW)
+    return None
+
+
 def rule_followup_cap(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
     if req.kind != ActionKind.SEND_FOLLOWUP:
         return None
@@ -304,6 +325,7 @@ DEFAULT_RULES: list[Rule] = [
     rule_opt_out,
     rule_duplicate,
     rule_rate_limits,
+    rule_supplier_rfq_limits,
     rule_followup_cap,
     rule_fact_validation,
     rule_budget,

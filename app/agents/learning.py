@@ -33,7 +33,8 @@ def metrics(ctx: RunContext, window_days: int = 30) -> dict:
     sent = list(
         ctx.session.scalars(
             select(Message).where(
-                Message.direction == "outbound", Message.status == "sent", Message.created_at >= since
+                Message.direction == "outbound", Message.status == "sent", Message.created_at >= since,
+                Message.opportunity_id.is_not(None),  # buyer-side only; supplier RFQs are tracked separately
             )
         )
     )
@@ -42,6 +43,7 @@ def metrics(ctx: RunContext, window_days: int = 30) -> dict:
             select(Message).where(
                 Message.direction == "inbound",
                 Message.status.in_(("received", "processed")),  # not bounces, auto-replies or strangers
+                Message.opportunity_id.is_not(None),
                 Message.created_at >= since,
             )
         )

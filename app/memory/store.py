@@ -31,13 +31,14 @@ class MemoryStore:
         self.session = session
 
     # ------------------------------------------------------------ companies
-    def company_key(self, name: str, domain: str | None, country: str | None) -> str:
-        return stable_key(
-            normalize_domain(domain) if domain else name.strip().lower(), country or ""
-        )
+    def company_key(self, name: str, domain: str | None, country: str | None, kind: str = "buyer") -> str:
+        base = (normalize_domain(domain) if domain else name.strip().lower(), country or "")
+        # Buyer keys are unchanged from v0.1; supplier leads live in their own key space.
+        return stable_key(*base) if kind == "buyer" else stable_key(kind, *base)
 
     def upsert_company(self, **fields: Any) -> tuple[Company, bool]:
-        key = self.company_key(fields["name"], fields.get("domain"), fields.get("country"))
+        kind = fields.get("kind") or "buyer"
+        key = self.company_key(fields["name"], fields.get("domain"), fields.get("country"), kind)
         existing = self.session.scalar(select(Company).where(Company.dedupe_key == key))
         if existing:
             for attr in ("segment", "size_indicator", "description", "city", "source"):
@@ -61,6 +62,9 @@ class MemoryStore:
             description=fields.get("description", ""),
             buying_signals=fields.get("buying_signals") or [],
             source=fields.get("source"),
+            kind=kind,
+            status=fields.get("status") or ("lead" if kind == "supplier" else None),
+            profile=fields.get("profile") or {},
         )
         self.session.add(company)
         self.session.flush()

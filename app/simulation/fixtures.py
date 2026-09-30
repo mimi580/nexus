@@ -114,3 +114,39 @@ RESPONSE_MIX = {
     ProductCategory.PHARMA.value: [("regulatory_issue", 0.24), ("information_request", 0.14), ("interested", 0.08), ("not_interested", 0.26), ("unsubscribe", 0.06), ("complaint", 0.04), ("no_reply", 0.5)],
     ProductCategory.SERVER_IT.value: [("interested", 0.16), ("price_request", 0.16), ("rfq", 0.08), ("not_interested", 0.24), ("wrong_contact", 0.06), ("unsubscribe", 0.04), ("no_reply", 0.5)],
 }
+
+
+# ---------------------------------------------------------------- supplier side
+# How simulated suppliers answer an RFQ (probability weights).
+SUPPLIER_RESPONSE_MIX = [("quote", 0.55), ("question", 0.15), ("not_supplying", 0.1), ("no_reply", 0.2)]
+
+SUPPLIER_CERTIFICATIONS = {
+    ProductCategory.MEDICAL.value: ["ISO 13485"],
+    ProductCategory.PHARMA.value: ["WHO-GMP"],
+    ProductCategory.LAPTOP.value: ["R2v3", "ISO 9001"],
+    ProductCategory.IPHONE.value: ["R2v3"],
+    ProductCategory.SERVER_IT.value: ["ISO 9001"],
+}
+
+SIM_QUOTE_DOCUMENTS = {
+    ProductCategory.PHARMA.value: "export licence, batch certificates",
+    ProductCategory.MEDICAL.value: "CE documentation on file",
+}
+
+SUPPLIER_QUESTION = "Thank you for your enquiry. Could you confirm the exact specifications and your target price before we quote?"
+SUPPLIER_DECLINE = "Thank you, but we are not able to supply this line at the moment."
+
+
+def sim_supplier_quote(category: str, rng) -> str:
+    econ = UNIT_ECONOMICS.get(category, {"unit_cost": (100.0, 150.0), "typical_qty": 10})
+    low, high = econ["unit_cost"]
+    price = round(rng.uniform(low, high), 2)
+    moq = max(1, int(econ["typical_qty"] // 4))
+    available = int(econ["typical_qty"] * rng.uniform(2, 5))
+    lead = rng.choice([7, 10, 14, 21])
+    docs = SIM_QUOTE_DOCUMENTS.get(category, "commercial invoice, packing list")
+    return (
+        f"Thank you for your request for quotation. We can offer {category.replace('_', ' ')} at USD {price} per unit "
+        f"FOB, MOQ {moq} units, {available} units available, lead time {lead} days. "
+        f"Payment: 30% deposit, balance before shipment. Documents: {docs}. Offer valid for 14 days."
+    )

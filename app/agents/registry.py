@@ -11,6 +11,7 @@ from app.agents.prospecting import (
 )
 from app.agents.qualification import OpportunityScoringAgent, QualificationAgent
 from app.agents.reply import ReplyAgent
+from app.agents.suppliers import SupplierProfileAgent, SupplierResearchAgent, SupplierRFQAgent
 from app.agents.response import ResponseAgent
 from app.agents.sourcing import SalesStrategyAgent, SourcingAgent
 
@@ -29,6 +30,9 @@ def build_registry(scoring_threshold: float = 0.45) -> dict[str, BaseAgent]:
         FollowUpAgent(),
         ResponseAgent(),
         ReplyAgent(),
+        SupplierResearchAgent(),
+        SupplierProfileAgent(),
+        SupplierRFQAgent(),
         LearningAgent(),
     ]
     return {agent.name: agent for agent in agents}
