@@ -73,7 +73,7 @@ def test_scoring_is_explainable_and_reproducible(ctx):
     QualificationAgent().run(ctx, {"opportunity_id": opportunity.id})
     first = OpportunityScoringAgent().run(ctx, {"opportunity_id": opportunity.id})
     breakdown = opportunity.score_breakdown
-    assert set(breakdown) == {"components", "weights", "contributions", "threshold"}
+    assert set(breakdown) == {"components", "weights", "weights_version", "contributions", "threshold"}
     assert pytest.approx(opportunity.score, rel=1e-9) == first.output["score"]
 
 

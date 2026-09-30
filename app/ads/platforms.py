@@ -154,6 +154,14 @@ class GoogleAdsPlatform:
             if not token:
                 return rows
 
+    def check(self) -> str:
+        """Live connection test: the account's currency and time zone."""
+        rows = self._search("SELECT customer.id, customer.currency_code, customer.time_zone FROM customer LIMIT 1")
+        customer = rows[0].get("customer", {}) if rows else {}
+        currency = customer.get("currencyCode", "?")
+        note = "" if currency == self.currency else f" - set GOOGLE_ADS_CURRENCY={currency}"
+        return f"ok (account {customer.get('id')}, {currency}, {customer.get('timeZone')}){note}"
+
     # ------------------------------------------------------------ build
     @staticmethod
     def _rsa(content: dict[str, Any], landing_url: str) -> dict[str, Any]:
@@ -318,6 +326,14 @@ class MetaAdsPlatform:
 
     def _post(self, path: str, data: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", path, data=data)
+
+    def check(self) -> str:
+        data = self._request("GET", self.account, params={"fields": "name,currency,account_status"})
+        currency = data.get("currency", "?")
+        status = {1: "active", 2: "disabled", 3: "unsettled"}.get(data.get("account_status"), str(data.get("account_status")))
+        note = "" if currency == self.currency else f" - set META_AD_ACCOUNT_CURRENCY={currency}"
+        page = self._request("GET", str(self.s.meta_page_id), params={"fields": "name"})
+        return f"ok (ad account {data.get('name')}, {currency}, {status}; page {page.get('name')}){note}"
 
     def _creative(self, launch: Launch, variant: dict[str, Any]) -> str:
         content = variant["content"]

@@ -151,6 +151,15 @@ def _live_checks(settings) -> dict:  # pragma: no cover - needs real services
     import ssl
 
     checks: dict = {}
+    from app.ads.platforms import GoogleAdsPlatform, MetaAdsPlatform
+
+    for name, configured, cls in (("google_ads", settings.google_ads_configured, GoogleAdsPlatform),
+                                  ("meta_ads", settings.meta_ads_configured, MetaAdsPlatform)):
+        if configured:
+            try:
+                checks[name] = cls(settings).check()
+            except Exception as exc:
+                checks[name] = f"FAILED: {exc}"
     if settings.search_provider != "none" and settings.search_api_key:
         from app.tools.search import build_search_provider
 
@@ -310,6 +319,55 @@ def cmd_notify(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_google_ads_token(args: argparse.Namespace) -> int:  # pragma: no cover - interactive
+    """One-time: get a Google Ads refresh token through your browser (run it on your own computer)."""
+    import http.server
+    import secrets as _secrets
+    import urllib.parse
+    import webbrowser
+
+    import httpx
+
+    state = _secrets.token_urlsafe(16)
+    redirect = f"http://127.0.0.1:{args.port}/"
+    url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode({
+        "client_id": args.client_id, "redirect_uri": redirect, "response_type": "code",
+        "scope": "https://www.googleapis.com/auth/adwords", "access_type": "offline", "prompt": "consent", "state": state,
+    })
+    received: dict = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - http.server API
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            received.update({k: v[0] for k, v in query.items()})
+            self.send_response(200)
+            self.send_header("content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"Done. You can close this tab and return to the terminal.")
+
+        def log_message(self, *a):
+            pass
+
+    print("Opening your browser. Sign in with the Google account that can access your Google Ads account.")
+    print("If it does not open, visit:\n" + url)
+    webbrowser.open(url)
+    with http.server.HTTPServer(("127.0.0.1", args.port), Handler) as server:
+        while "code" not in received and "error" not in received:
+            server.handle_request()
+    if received.get("state") != state or "code" not in received:
+        print(f"Authorisation failed: {received.get('error', 'state mismatch')}", file=sys.stderr)
+        return 1
+    token = httpx.post("https://oauth2.googleapis.com/token", timeout=30, data={
+        "code": received["code"], "client_id": args.client_id, "client_secret": args.client_secret,
+        "redirect_uri": redirect, "grant_type": "authorization_code"}).json()
+    if "refresh_token" not in token:
+        print(f"No refresh token returned: {token.get('error_description') or token}", file=sys.stderr)
+        return 1
+    print("\nPut this line in the server's .env file (keep it private; do not share it):\n")
+    print(f"GOOGLE_ADS_REFRESH_TOKEN={token['refresh_token']}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = argparse.ArgumentParser(prog="nexus")
@@ -411,6 +469,12 @@ def main(argv: list[str] | None = None) -> int:
     rs.add_argument("--country", default=None)
     rs.add_argument("--count", type=int, default=5)
     rs.set_defaults(func=cmd_research)
+
+    gat = sub.add_parser("google-ads-token", help="one-time: get GOOGLE_ADS_REFRESH_TOKEN via your browser")
+    gat.add_argument("--client-id", required=True)
+    gat.add_argument("--client-secret", required=True)
+    gat.add_argument("--port", type=int, default=8765)
+    gat.set_defaults(func=cmd_google_ads_token)
 
     nt = sub.add_parser("notify-test", help="send a test notification to the configured channels")
     nt.set_defaults(func=cmd_notify)
