@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NEXUS control</title>
+<style>
+  :root {
+    --ink: #0d1117;
+    --panel: #151b23;
+    --line: #232c38;
+    --text: #e6eaf0;
+    --muted: #8b95a7;
+    --go: #3fb68b;
+    --hold: #e0a32e;
+    --stop: #e2564d;
+    --flow: #5a8dee;
+    --radius: 6px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
+    padding: 20px 24px; border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
+  header .mode { color: var(--muted); font-size: 13px; }
+  main { padding: 24px; display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); max-width: 1400px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; }
+  section h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 14px; }
+  .headline { font-size: 34px; font-weight: 600; line-height: 1.1; }
+  .headline span { font-size: 14px; color: var(--muted); font-weight: 400; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.value { text-align: right; color: var(--text); white-space: nowrap; }
+  td.label { color: var(--muted); }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 10px 0 14px; }
+  .bar > i { display: block; height: 100%; background: var(--go); }
+  .bar.warn > i { background: var(--hold); }
+  .bar.over > i { background: var(--stop); }
+  .stage { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .stage:last-child { border-bottom: none; }
+  .stage em { font-style: normal; color: var(--muted); }
+  ul { list-style: none; margin: 0; padding: 0; font-size: 13.5px; }
+  li { padding: 7px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+  li:last-child { border-bottom: none; }
+  li b { color: var(--text); font-weight: 500; display: block; }
+  .flag { color: var(--hold); }
+  .flag.block { color: var(--stop); }
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 14px; padding: 8px 14px; border-radius: var(--radius);
+    border: 1px solid var(--line); background: #1d2632; color: var(--text); cursor: pointer;
+  }
+  button:hover { border-color: #33404f; }
+  button:focus-visible { outline: 2px solid var(--flow); outline-offset: 2px; }
+  button.stop { border-color: #4a2320; color: #ffb4ad; background: #2a1917; }
+  .status { font-size: 13px; color: var(--muted); margin-top: 12px; min-height: 18px; }
+  .empty { color: var(--muted); font-size: 13.5px; }
+  @media (prefers-reduced-motion: no-preference) { .bar > i { transition: width .3s ease; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>NEXUS control</h1>
+  <span class="mode" id="mode">loading…</span>
+</header>
+
+<main>
+  <section>
+    <h2>Budget this period</h2>
+    <div class="headline" id="budget-remaining">—<span> remaining</span></div>
+    <div class="bar" id="budget-bar"><i style="width:0%"></i></div>
+    <table id="budget-table"></table>
+  </section>
+
+  <section>
+    <h2>Pipeline</h2>
+    <div id="pipeline"><p class="empty">No opportunities yet.</p></div>
+  </section>
+
+  <section>
+    <h2>Results</h2>
+    <table id="metrics"></table>
+  </section>
+
+  <section>
+    <h2>Blocked and escalated</h2>
+    <ul id="blocked"><li class="empty">Nothing held back.</li></ul>
+  </section>
+
+  <section>
+    <h2>Compliance</h2>
+    <ul id="compliance"><li class="empty">No compliance events.</li></ul>
+  </section>
+
+  <section>
+    <h2>Errors</h2>
+    <ul id="errors"><li class="empty">No failed tasks.</li></ul>
+  </section>
+
+  <section>
+    <h2>Controls</h2>
+    <div class="controls">
+      <button id="run">Run a pass</button>
+      <button id="pause">Pause</button>
+      <button id="resume">Resume</button>
+      <button id="stop" class="stop">Emergency stop</button>
+    </div>
+    <p class="status" id="status"></p>
+  </section>
+</main>
+
+<script>
+const fmt = (n) => "$" + Number(n || 0).toFixed(2);
+const el = (id) => document.getElementById(id);
+
+function rows(target, pairs) {
+  target.innerHTML = pairs
+    .map(([k, v]) => `<tr><td class="label">${k}</td><td class="value">${v}</td></tr>`)
+    .join("");
+}
+
+function list(target, items, empty) {
+  target.innerHTML = items.length
+    ? items.map((i) => `<li><b class="${i.cls || ''}">${i.title}</b>${i.detail || ""}</li>`).join("")
+    : `<li class="empty">${empty}</li>`;
+}
+
+async function refresh() {
+  const res = await fetch("/api/state");
+  if (!res.ok) { el("status").textContent = "State unavailable. Check the API logs."; return; }
+  const s = await res.json();
+
+  const control = s.control || {};
+  el("mode").textContent = control.emergency_stop
+    ? "emergency stop engaged"
+    : control.paused ? "paused" : "running";
+
+  const b = s.budget;
+  el("budget-remaining").innerHTML = `${fmt(b.remaining_usd)}<span> of ${fmt(b.limit_usd)} remaining</span>`;
+  const used = b.limit_usd ? (b.limit_usd - b.remaining_usd) / b.limit_usd : 0;
+  const bar = el("budget-bar");
+  bar.className = "bar" + (used > 0.9 ? " over" : used > 0.7 ? " warn" : "");
+  bar.firstElementChild.style.width = Math.min(100, used * 100).toFixed(1) + "%";
+  rows(el("budget-table"), [
+    ["Committed", fmt(b.committed_usd)],
+    ["Reserved", fmt(b.reserved_usd)],
+    ["Month-end forecast", fmt(b.forecast_usd)],
+    ["Hard stop", b.hard_stopped ? "engaged" : "clear"],
+  ]);
+
+  const stages = Object.entries(s.pipeline || {});
+  el("pipeline").innerHTML = stages.length
+    ? stages.map(([k, v]) => `<div class="stage"><em>${k.replace(/_/g, " ")}</em><span>${v}</span></div>`).join("")
+    : '<p class="empty">No opportunities yet.</p>';
+
+  const m = s.metrics || {};
+  rows(el("metrics"), [
+    ["Messages sent", m.messages_sent ?? 0],
+    ["Replies", m.replies ?? 0],
+    ["Qualified response rate", ((m.qualified_response_rate || 0) * 100).toFixed(1) + "%"],
+    ["Open pipeline margin", fmt(m.pipeline_margin_usd)],
+    ["Cost per qualified lead", m.cost_per_qualified_lead_usd == null ? "—" : fmt(m.cost_per_qualified_lead_usd)],
+    ["Tasks queued", (s.tasks && (s.tasks.pending || 0)) + (s.tasks && (s.tasks.running || 0) || 0)],
+  ]);
+
+  list(el("blocked"), (s.blocked_actions || []).map((a) => ({
+    title: a.summary || a.type,
+    cls: "flag" + (a.decision === "block" ? " block" : ""),
+    detail: `${a.decision} · ${a.at.replace("T", " ").slice(0, 16)}`,
+  })), "Nothing held back.");
+
+  list(el("compliance"), (s.compliance || []).map((c) => ({
+    title: c.flag.replace(/_/g, " "),
+    cls: "flag" + (c.severity === "high" ? " block" : ""),
+    detail: c.detail,
+  })), "No compliance events.");
+
+  list(el("errors"), (s.errors || []).map((e) => ({
+    title: e.agent, detail: e.error,
+  })), "No failed tasks.");
+}
+
+async function post(path, body) {
+  el("status").textContent = "Working…";
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  el("status").textContent = res.ok ? "Done." : "That request failed. Check the API logs.";
+  await refresh();
+}
+
+el("run").onclick = () => post("/api/run");
+el("pause").onclick = () => post("/api/control", { paused: true });
+el("resume").onclick = () => post("/api/control", { paused: false, emergency_stop: false });
+el("stop").onclick = () => post("/api/control", { emergency_stop: true });
+
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>

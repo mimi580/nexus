@@ -1,0 +1,86 @@
+"""Runtime context passed to every agent. One session, one policy gate."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app.audit.logger import DbAuditLogger
+from app.budget.controller import BudgetController
+from app.core.config import Settings, get_settings
+from app.core.errors import EscalationRequired, PolicyViolation
+from app.core.interfaces import ActionRequest, PolicyResult
+from app.core.types import Decision, utcnow
+from app.memory.store import MemoryStore, TaskStore
+from app.models.router import ModelRouter
+from app.policies.engine import PolicyEngine
+
+
+@dataclass
+class RunContext:
+    session: Session
+    settings: Settings
+    memory: MemoryStore
+    tasks: TaskStore
+    router: ModelRouter
+    policy: PolicyEngine
+    budget: BudgetController
+    audit: DbAuditLogger
+    email: Any = None
+    clock: Any = field(default=utcnow)
+    objective_id: str | None = None
+    task_id: str | None = None
+
+    @property
+    def now(self) -> datetime:
+        return self.clock()
+
+    # ------------------------------------------------------------ gatekeeping
+    def authorize(self, request: ActionRequest, *, raise_on_block: bool = False) -> PolicyResult:
+        result = self.policy.evaluate(request, now=self.now)
+        self.audit.record(
+            "policy_decision",
+            summary=f"{request.kind.value}: {request.summary}",
+            decision=result.decision.value,
+            objective_id=self.objective_id or request.objective_id,
+            task_id=self.task_id,
+            rule_ids=result.rule_ids,
+            reasons=result.reasons,
+            risk=result.risk.value,
+        )
+        if raise_on_block and result.decision == Decision.BLOCK:
+            raise PolicyViolation("; ".join(result.reasons) or "blocked", rules=result.rule_ids)
+        if raise_on_block and result.decision == Decision.ESCALATE:
+            raise EscalationRequired("; ".join(result.reasons) or "escalated", rules=result.rule_ids)
+        return result
+
+
+def build_context(
+    session: Session,
+    settings: Settings | None = None,
+    *,
+    email: Any = None,
+    clock: Any = utcnow,
+    router: ModelRouter | None = None,
+) -> RunContext:
+    from app.execution.email import build_email_provider
+    from app.models.router import build_default_router
+
+    settings = settings or get_settings()
+    budget = BudgetController(session, settings)
+    policy = PolicyEngine(session, budget, settings)
+    return RunContext(
+        session=session,
+        settings=settings,
+        memory=MemoryStore(session),
+        tasks=TaskStore(session),
+        router=router or build_default_router(session, budget, settings),
+        policy=policy,
+        budget=budget,
+        audit=DbAuditLogger(session),
+        email=email or build_email_provider(settings),
+        clock=clock,
+    )
