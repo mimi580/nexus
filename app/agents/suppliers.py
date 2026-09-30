@@ -486,7 +486,14 @@ class SupplierRFQAgent(BaseAgent):
                 ),
                 facts,
             )
+        # Figures NEXUS itself supplied (quantities, and any in your RFQ product
+        # descriptions or delivery terms) are known facts; anything else is not.
+        from app.policies.fact_check import NUMBER_RE
+
+        own_text = " ".join(str(v) for v in (rfq.destination, settings["rfq_products"].get(category, ""),
+                                             *(item.get("description", "") for item in rfq.items)))
         numbers = [item.get("quantity") for item in rfq.items if item.get("quantity")]
+        numbers += [m.group(1).replace(",", "") for m in NUMBER_RE.finditer(own_text)]
         request = ActionRequest(
             kind=ActionKind.SEND_SUPPLIER_RFQ,
             summary=f"RFQ to {company.name} for {category}" + (f" (follow-up {step})" if step else ""),

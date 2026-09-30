@@ -35,12 +35,13 @@ def test_unknown_product_category_is_rejected(ctx):
         Orchestrator(ctx).create_objective("bad", ["moon_rockets"])
 
 
-def test_objective_creates_one_task_per_category(ctx):
+def test_objective_seeds_market_and_supplier_research_per_category(ctx):
     orchestrator = Orchestrator(ctx)
     objective = orchestrator.create_objective(
         "pipeline", [ProductCategory.LAPTOP.value, ProductCategory.IPHONE.value]
     )
-    assert ctx.session.scalar(select(func.count()).select_from(Task).where(Task.objective_id == objective.id)) == 2
+    agents = sorted(ctx.session.scalars(select(Task.agent).where(Task.objective_id == objective.id)))
+    assert agents == ["market_research", "market_research", "supplier_research", "supplier_research"]
 
 
 def test_self_scheduling_agent_cannot_run_forever(ctx):
