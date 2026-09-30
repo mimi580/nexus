@@ -32,7 +32,9 @@ jobs:
           DATABASE_URL: sqlite+pysqlite:///./ci-migrations.sqlite3
         run: alembic check
       - name: Simulation smoke test
-        run: python -m app.cli simulate --days 10 > simulation-report.json
+        run: |
+          python -m app.cli simulate --days 10 > simulation-report.json
+          python -c "import json; r=json.load(open('simulation-report.json')); print('::notice title=Simulation summary::' + json.dumps({'pipeline': r.get('pipeline'), 'ads': r.get('ads'), 'messages': r.get('messages'), 'spent': r['budget']['committed_usd'], 'ads_used': r['budget']['categories'].get('ads')}))"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

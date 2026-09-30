@@ -21,13 +21,16 @@ This guide is for the person running NEXUS: setting it up, putting it on a serve
     - [Finding and engaging suppliers](#finding-and-engaging-suppliers)
 15. [E-mail: sending, replies, bounces and opt-outs](#15-e-mail-sending-replies-bounces-and-opt-outs)
 16. [Budget and costs](#16-budget-and-costs)
-17. [Alerts on your phone](#17-alerts-on-your-phone)
-18. [Command reference](#18-command-reference)
-19. [API reference](#19-api-reference)
-20. [Configuration reference](#20-configuration-reference)
-21. [Policy rules reference](#21-policy-rules-reference)
-22. [Backups, updates and recovery](#22-backups-updates-and-recovery)
-23. [Troubleshooting](#23-troubleshooting)
+17. [Landing pages and enquiries](#17-landing-pages-and-enquiries)
+18. [Advertising on Google and Meta](#18-advertising-on-google-and-meta)
+19. [How NEXUS learns and improves](#19-how-nexus-learns-and-improves)
+20. [Alerts on your phone](#20-alerts-on-your-phone)
+21. [Command reference](#21-command-reference)
+22. [API reference](#22-api-reference)
+23. [Configuration reference](#23-configuration-reference)
+24. [Policy rules reference](#24-policy-rules-reference)
+25. [Backups, updates and recovery](#25-backups-updates-and-recovery)
+26. [Troubleshooting](#26-troubleshooting)
 
 ---
 
@@ -43,7 +46,8 @@ NEXUS is an autonomous B2B sales and sourcing assistant for five product lines: 
 - writes and sends a personalised first e-mail and a limited number of follow-ups,
 - reads replies, recognises bounces, auto-replies and opt-outs,
 - drafts answers to interested buyers (including an indicative price) **for you to approve**,
-- learns from the outcomes you record, and
+- publishes landing pages and runs Google and Meta ads for every line except pharmaceuticals, turning enquiries into deals,
+- learns from real outcomes (replies, enquiries, quotes and the deals you record) and changes what it does accordingly, and
 - tells you, by Telegram or e-mail, whenever it needs a decision.
 
 ### What it will never do
@@ -58,7 +62,9 @@ These are enforced by code, not by instructions to the AI:
 | Execute a regulated (medical/pharma) transaction | Rules R-REG-01, R-REG-05 |
 | Contact someone who opted out, bounced or complained | Rules R-OUT-01 to R-OUT-04 |
 | E-mail the same person twice in a day, or exceed your daily limit | Rules R-RATE-01, R-RATE-02 |
-| Spend more than USD 200 in a month | A hard ceiling in code that configuration cannot raise |
+| Spend more than your monthly budget (USD 500 unless you change it) | Every paid action, and all ad spend, is booked against the budget; paid work and ads stop when it is used |
+| Advertise pharmaceuticals | Rule R-ADS-01 |
+| Launch an ad campaign without your approval (unless you switch that off) | Rule R-ADS-03 |
 | Loop forever or run up costs | Every run has iteration, time, cost, action and no-progress limits |
 
 ### Two modes
@@ -161,9 +167,9 @@ python scripts/worker.py --interval 60
 python -m app.cli simulate --days 10
 ```
 
-This creates an objective across all five product lines and runs ten simulated days end to end, in a separate throwaway database with no real services. It is safe to run on a live server and never touches your real data. It prints a report: pipeline by stage, messages, evidence records, escalations, blocked actions, budget used and learning metrics. With Docker: `docker compose exec api nexus simulate --days 10`.
+This creates an objective across all five product lines and runs ten simulated days end to end, in a separate throwaway database with no real services. It is safe to run on a live server and never touches your real data. It prints a report: pipeline by stage, messages, evidence records, escalations, blocked actions, budget used, learning metrics and an `ads` section (campaigns, landing pages and enquiries by source). The simulated world includes a small sample catalogue, so ads are planned, launched on a simulated Google and Meta (no accounts, no money), and some simulated clicks become enquiries that flow through the normal enquiry → deal → quotation path. With Docker: `docker compose exec api nexus simulate --days 10`.
 
-In the dashboard, create an objective on the Overview tab, press **Run a pass now** a few times, and watch the Pipeline and Reviews tabs fill up.
+In the dashboard, create an objective on the Overview tab, press **Run a pass now** a few times, and watch the Pipeline and Reviews tabs fill up. To try ads in the dashboard's simulation, add an offer and a selling price for a line (Catalogue tab), set `PUBLIC_SITE_URL=http://localhost:8000` in `.env`, then use **Ads → Plan campaigns**; proposals appear in Reviews, and after approval simulated spend, clicks and enquiries appear as passes run. Simulated ad spend is booked against the simulated budget.
 
 ---
 
@@ -178,6 +184,8 @@ In the dashboard, create an objective on the Overview tab, press **Run a pass no
 | An AI key | Research reading, classification, drafting | Anthropic API key with a monthly spend limit set in the Anthropic console | Within the USD 65 AI budget lines |
 | A search key | Finding buyers from real sources | Serper (cheapest per query) or Brave Search | A few dollars a month at NEXUS volumes |
 | A Telegram bot (optional) | Alerts on your phone | Free | Free |
+| Google Ads and/or Meta ad accounts (optional) | Advertising (section 18) | Google Ads with a manager account and API access; Meta business portfolio with a system user | Your ad spend, within the ads budget line |
+| A customer-facing domain (optional) | Landing pages for ads | e.g. `yourbrand.com` | ~USD 10–15/year |
 | Your commercial data | Real costs and selling prices | Supplier quotes and market price checks | Your time |
 
 **Which search provider:** use **Serper**. It returns Google's results, which cover African businesses far better than other indexes, it is the only one of the three whose business listings (Google Maps: hospitals, pharmacies, schools and wholesalers with their websites) NEXUS can use, and it is the cheapest per query. Brave has its own, smaller index; Tavily returns page text but NEXUS already reads pages itself.
@@ -279,7 +287,7 @@ Backups are kept for 14 days in `/opt/nexus/backups`. Copy them off the server r
 
 ## 7. First-time setup in the dashboard
 
-Do these once, in this order. Everything can also be done from the command line (section 18).
+Do these once, in this order. Everything can also be done from the command line (section 21).
 
 ### 7.1 Register your licence (medical and pharmaceutical)
 
@@ -342,10 +350,11 @@ About 10–15 minutes:
 1. **Reviews tab** — decide everything waiting. The badge on the tab shows how many items there are, and Telegram or e-mail alerts tell you when new ones arrive.
 2. **Catalogue gaps** — items of kind *catalogue* say which offer or selling price is missing. Add it, and parked deals resume automatically within six hours.
 3. **Suppliers tab** — glance at new suppliers and RFQs. Block anything that looks wrong. Supplier quotes to check arrive in Reviews.
-4. **Pipeline tab** — when a deal is won or lost, press **Won** or **Lost**. For a win, enter revenue and margin if you can. These outcomes are what the learning loop measures.
-5. **Overview** — glance at budget used, replies and positive-reply rate.
+4. **Pipeline tab** — when a deal is won or lost, press **Won** or **Lost**. For a win, enter revenue and margin if you can. These outcomes are what the learning loop measures, and wins are reported to the ad platforms.
+5. **Leads and Ads tabs** (if ads are on) — new enquiries, and each campaign's spend, enquiries and cost per enquiry. Quotations for enquiries wait in Reviews: answer them the same day.
+6. **Overview** — glance at budget used, replies and positive-reply rate.
 
-Weekly: check the price book and offers for expired entries, and look at the System tab for failed tasks or compliance events.
+Weekly: check the price book and offers for expired entries, look at the System tab for failed tasks or compliance events, and read the Learning tab's summary.
 
 ---
 
@@ -535,18 +544,172 @@ NEXUS marks messages it has read as read in the mailbox. You can still read and 
 
 ## 16. Budget and costs
 
-- The monthly ceiling is **USD 200**, fixed in code. `BUDGET_MONTHLY_LIMIT_USD` can lower it but never raise it.
-- The budget is split into planning lines (AI primary 45, AI secondary 20, research 30, e-mail 25, infrastructure 20, storage 5, automation 15, testing 10, reserve 30), changeable with `BUDGET_CATEGORY_LIMITS_JSON`.
+- The monthly budget is **USD 500** by default. Set `BUDGET_MONTHLY_LIMIT_USD` to change it (higher or lower); there is no built-in ceiling beyond what you set.
+- The budget is split into lines: advertising 300, AI primary 45, AI secondary 20, research 30, e-mail 25, infrastructure 20, storage 5, automation 15, testing 10, reserve 30. Change them with `BUDGET_CATEGORY_LIMITS_JSON`; keep the lines adding up to your monthly budget. If you do not run ads, move the 300 elsewhere or lower the budget.
 - Every paid action reserves its estimated cost first and is refused if that would exceed its line or the month. The real cost is recorded afterwards.
+- Ad spend is reported by Google and Meta and booked against the **ads** line every 6 hours. NEXUS plans daily budgets from what is left (80% of the remainder spread over the rest of the month) and pauses every campaign at 95% of the line.
 - AI costs are estimated from token counts at rates set at or above list prices, so NEXUS stops early rather than late.
-- When the month's budget is used up, paid work stops, you get an alert, and work resumes on the 1st.
-- Server, domain and mailbox are paid to those providers directly and are not tracked by NEXUS. Keep their cost in mind within your USD 200.
+- When the month's budget is used up, paid work and ads stop, you get an alert, and work resumes on the 1st.
+- Server, domain and mailbox are paid to those providers directly and are not tracked by NEXUS.
 
 The Overview tab shows spent, reserved and the month-end forecast. `nexus report` prints the same from the command line.
 
 ---
 
-## 17. Alerts on your phone
+## 17. Landing pages and enquiries
+
+Every ad sends people to a **landing page**: one page per product line and country (for example *Refurbished business laptops for Kenya*). The pages are part of NEXUS; there is nothing else to host.
+
+**What is on a page.** A headline and short benefits, the actual models from your current supplier offers (condition, warranty, minimum order), a "from" price taken from your price book, your licence statement for medical equipment (only when a licence covers that country), how quickly you reply, an enquiry form, a short FAQ, your business name and address, and a link to the privacy notice. Every figure and claim comes from your catalogue, price book or licence register. The AI writes the words; the same fact check used for e-mail, plus the advertising claim rules, decides whether they can be published. If the AI's copy fails, a plain version built from the same facts is published instead, so a page never shows a claim you cannot support.
+
+**The enquiry form** asks for name, organisation, e-mail, phone (optional), quantity (optional) and a message, and requires the visitor to tick consent to be contacted. It has a hidden spam trap and a limit of five enquiries per visitor per hour. It also carries, invisibly, which ad the visitor came from.
+
+**What happens to an enquiry, within minutes:**
+
+1. It is stored as a **lead** with its source (Google, Meta or organic) and the exact ad.
+2. NEXUS creates the organisation, contact and deal, and sends a short acknowledgement (no prices, no promises beyond your reply time). You get an alert.
+3. The deal is matched to a supplier offer and priced like any other.
+4. A quotation is drafted and waits in **Reviews** for your approval (rule R-REPLY-01, as for every reply to a buyer).
+5. Google or Meta is told that this click became an enquiry, and later a sale if you record the deal as won. This is what makes the platforms' own bidding find more people like your buyers.
+
+**WhatsApp.** Set `WHATSAPP_NUMBER` and every page gets a WhatsApp button. Clicks are counted per page. Conversations on WhatsApp are yours to handle; NEXUS does not read them.
+
+**Your own domain for the pages.** By default pages are served at `https://<dashboard domain>/p/<page>`. For ads, a customer-facing domain looks better and converts better:
+
+1. Buy the domain (for example `yourbrand.com`) and point `www` and the bare domain (A records) at your server.
+2. Copy `deploy/site.caddy.example` to `deploy/sites/site.caddy` and replace `www.yourbrand.com, yourbrand.com` with your domain.
+3. In `.env` set `PUBLIC_SITE_URL=https://www.yourbrand.com`, then run `docker compose up -d`.
+
+Only the public pages (`/p/…`, `/privacy`, `/site`) answer on that domain; the dashboard and API do not.
+
+**The Leads tab** lists every page with views, WhatsApp clicks, enquiries and conversion rate, and every enquiry with its source and status. **Publish / refresh page** rebuilds a page after you change offers or prices (pages are also created automatically when ads are planned).
+
+**Privacy.** Raw IP addresses are never stored (a daily-changing pseudonymous id is used for counting). The privacy notice at `/privacy` explains what is collected and that a hashed e-mail or phone and the click id may be shared with the ad platform to measure results. Have it checked against the rules of the countries you advertise in (Kenya's Data Protection Act, the EU GDPR for Romania and Bulgaria).
+
+---
+
+## 18. Advertising on Google and Meta
+
+NEXUS plans, writes, launches, measures and improves ads on **Google Search** and **Meta** (Facebook and Instagram), for every product line **except pharmaceuticals**, which are never advertised (rule R-ADS-01).
+
+### How NEXUS decides what to run
+
+| Decision | How it is made |
+|---|---|
+| Which product lines | Only lines with a current supplier offer (nothing to sell, no ad) and never pharmaceuticals |
+| Which countries | Your `target_markets` per line, ranked by enquiries per dollar seen so far (all markets start equal and earn their place) |
+| How many campaigns | At most `ADS_MAX_CAMPAIGNS_PER_PLATFORM` per platform, one country each, so results are clear per market |
+| Budget | Each new campaign gets `ADS_DEFAULT_DAILY_BUDGET_USD`, but only while 80% of what is left in the month's ads budget, spread over the remaining days, covers it |
+| What the ad says | Each ad leads with one **angle**: price, lead time, condition and warranty, local support, licensed supply (medical only) or product range. An angle is only used when your data supports it (no warranty on file, no warranty ad). Angles that bring enquiries are chosen more often |
+| Google keywords | Buyer-intent phrases (wholesale, bulk, supplier, for schools, model names, "in Kenya"), phrase match; plus 30+ negative keywords that keep money away from job seekers, repair searches, downloads and one-unit shoppers |
+| Meta audience | The countries you target, ages 25–65, with Meta's automatic audience finding; the B2B wording of the ad does the filtering |
+| Meta images | Your product photos (Ads tab), in rotation; until you upload some, a clean generated card with the headline |
+
+### What every ad is checked for before it can run
+
+- **Platform limits:** Google headlines up to 30 characters (3–15 of them), descriptions up to 90 (2–4); Meta headline up to 40, description up to 30, main text up to 500, an allowed call-to-action button.
+- **Facts:** every number must come from your catalogue or price book (the same fact check as e-mail).
+- **Claims:** no "guaranteed", "best/lowest price", "#1", "risk-free" and similar; used or refurbished goods never described as "new" or "factory sealed"; no implied manufacturer endorsement ("Apple certified", "manufacturer warranty"); no medical claims or approvals ("FDA approved", "CE marked") for medical equipment.
+- **Style:** no shouting in capitals, no repeated punctuation (both platforms reject these).
+
+A failing ad is replaced by a plain version built from facts; if that fails too, the campaign is not proposed.
+
+### Approving and launching
+
+By default (`ADS_REQUIRE_LAUNCH_APPROVAL=true`) each new campaign appears in **Reviews** as *ad campaign*, showing the budget, country, every ad's text and the keywords. **Approve and launch** builds it on the platform; **Reject** discards it for good. Campaigns are created paused and switched on only once every part exists, so a half-built campaign never spends.
+
+Set `ADS_REQUIRE_LAUNCH_APPROVAL=false` only once you trust what NEXUS proposes; spending stays inside the ads budget either way.
+
+### After launch (automatic)
+
+Every 6 hours NEXUS pulls spend, impressions and clicks, converts spend to USD, and books it against the **ads** line of the budget. Once a day, for campaigns older than three days:
+
+| Situation | What NEXUS does |
+|---|---|
+| The ads line reaches 95% of its limit (or the month's budget is used up) | Pauses every campaign and alerts you; resumes them automatically next month or when you raise the limit |
+| A campaign has spent the larger of USD 30 or 3× `ADS_TARGET_COST_PER_LEAD_USD` with no enquiry | Pauses it and alerts you (check the page, the offer and the price, then resume it from the Ads tab) |
+| An ad has 150+ clicks and less than a 5% chance of being the best in its campaign | Pauses it and writes a replacement with an angle not yet tried there (at least two ads always keep running) |
+| Enquiries cost more than 3× your target | Cuts that campaign's daily budget by 30% |
+| Across campaigns | Moves daily budget toward the campaigns bringing enquiries (and wins), at most ±30% per campaign per day and never below `ADS_MIN_DAILY_BUDGET_USD` |
+| Google search terms that are clearly irrelevant ("free", "jobs", "repair"…, or 20+ clicks sharing no word with your keywords) | Adds them as negative keywords |
+
+Every change is in the audit log with the numbers behind it. From the **Ads** tab you can pause, resume, change a budget or remove any campaign at any time; NEXUS respects what you set.
+
+### Setting up Google Ads (about an hour, plus Google's review time)
+
+1. **Ad account.** At ads.google.com create an account in *expert mode* (skip the guided campaign). Choose **USD** as currency if you can (it cannot be changed later) and your time zone. Add billing.
+2. **Manager account.** Create a Google Ads **manager account** (free) and link your ad account to it. The API is requested from the manager account.
+3. **Developer token.** In the manager account: *Admin → API Center*. Accept the terms. You get a token with **test access**, which only works with test accounts. Apply for **Basic access** from the same page (describe NEXUS as an internal tool that creates and manages search campaigns for your own business). Approval usually takes a few working days. NEXUS cannot manage your real account until it is approved.
+4. **Google Cloud credentials.** At console.cloud.google.com create a project, enable the **Google Ads API**, configure the OAuth consent screen (type *External*, add your own Google address as a test user), then *Credentials → Create credentials → OAuth client ID → Desktop app*. Note the client ID and client secret.
+5. **Refresh token.** On your own computer, in the NEXUS folder, run
+   `nexus google-ads-token --client-id <ID> --client-secret <SECRET>`
+   A browser opens; sign in with the Google account that has access to the ad account. The command prints a `GOOGLE_ADS_REFRESH_TOKEN=` line.
+6. **Conversion actions** (so Google learns from enquiries). *Goals → Conversions → New conversion action → Import → Other data sources or CRMs → Track conversions from clicks.* Create one called "Enquiry" (and optionally one called "Won deal"). Open each and copy the number after `ctId=` in the browser address bar. Keep **auto-tagging** on (*Admin → Account settings*), which it is by default.
+7. **Put it in `.env` on the server:** `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_CUSTOMER_ID` (the ad account number), `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (the manager account number), `GOOGLE_ADS_CURRENCY`, `GOOGLE_ADS_CONVERSION_ACTION_LEAD`, `GOOGLE_ADS_CONVERSION_ACTION_WON`.
+
+### Setting up Meta (about an hour, plus business verification if asked)
+
+1. **Business portfolio.** At business.facebook.com create a business portfolio for your company. Create or add your **Facebook Page**, and create an **ad account** (currency **USD** if you can; time zone; add a payment method).
+2. **Verify your domain** (*Business settings → Brand safety → Domains*) using the domain your landing pages are on. Meta may also ask you to verify the business itself; have your registration documents ready.
+3. **App.** At developers.facebook.com create an app of type *Business*, connected to your business portfolio, and add the **Marketing API** product.
+4. **System user and token.** *Business settings → Users → System users → Add* (role *Admin*). *Assign assets*: your ad account (full control) and your Page. *Generate new token* for your app with the permissions `ads_management`, `ads_read`, `business_management`, `pages_read_engagement` and `pages_manage_ads`, and choose a token that does not expire.
+5. **Dataset (pixel) for results.** *Events Manager → Connect data sources → Web*; name it and note its ID. NEXUS sends "Lead" and "Purchase" events to it from the server (Conversions API), so no code on the page is needed.
+6. **Put it in `.env` on the server:** `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` (digits only), `META_PAGE_ID`, `META_PIXEL_ID`, `META_AD_ACCOUNT_CURRENCY`.
+
+For ads shown in the EU (Romania, Bulgaria and other member states), the EU Digital Services Act requires naming who benefits from and who pays for the ad; NEXUS fills both with `BUSINESS_NAME`.
+
+### Switching ads on
+
+1. Make sure at least one product line has a current supplier offer and a selling price, and that `PUBLIC_SITE_URL` (or `PUBLIC_BASE_URL`) is set.
+2. If an ad account is not in USD, set `ADS_FX_RATES_JSON`, for example `{"KES": 129.5}` (units of that currency per 1 USD). Update it when rates move materially.
+3. Set `ADS_ENABLED=true` and apply with `docker compose up -d`.
+4. Run `docker compose exec api nexus doctor --live`: it shows each ad account's name, currency and status, or the exact error.
+5. Upload a few real product photos in **Ads → Product photos** (strongly recommended for Meta).
+6. **Ads → Plan campaigns** (or wait for the weekly planning run). Approve the proposals in **Reviews**.
+
+### Getting ads to convert: what matters most
+
+- **Price and offer.** Ads and pages can only say what your catalogue and price book say. A competitive "from" price and a clear warranty are the strongest angles NEXUS can use; keep them current.
+- **Answer fast.** Enquiries go cold within hours. Approve drafted quotations in Reviews the same day, and set `LEAD_RESPONSE_PROMISE` to something you can keep.
+- **Real photos** of the stock on Meta.
+- **WhatsApp** (`WHATSAPP_NUMBER`): many buyers in the region prefer it to a form.
+- **Record outcomes.** Mark deals won or lost in Pipeline. Won deals are reported to the platforms and weigh double when budget is moved.
+- **Give it time.** Each campaign needs a week or two and a few hundred clicks before the numbers mean much; NEXUS does not judge an ad before 150 clicks.
+- **Medical equipment** ads are allowed on both platforms for business buyers, but each platform may restrict or reject some device types in some countries. A rejected ad shows no impressions in NEXUS; check the platform's own interface for the reason.
+
+### Honest limits
+
+- NEXUS reads spend and clicks, not the platforms' ad-review status. If an ad is disapproved it simply shows no impressions; the platform e-mails you the reason.
+- Budgets are converted at the rate you set; a stale rate misstates spend in USD.
+- Google keywords are English. Pages and ads are in English.
+- Meta's own lead forms and Instagram direct messages are not used; everything goes to your landing page.
+
+---
+
+## 19. How NEXUS learns and improves
+
+NEXUS improves itself from real outcomes, not from the AI's opinion. Every choice it makes repeatedly is a small experiment that it keeps score of:
+
+| What it learns | From which results | Where it is used |
+|---|---|---|
+| E-mail angle (price, availability, condition, licensed supply) and subject-line style | Positive replies (interested, asking for price or information, RFQ, negotiation) to first e-mails | Every new first e-mail |
+| Which segments to contact first | Positive-reply rate per product line and country | Order of outreach |
+| Market attractiveness | Research score, blended with actual reply rates once a market has 20+ first e-mails (the evidence's weight grows with volume, up to 70%) | Opportunity scoring and market ranking |
+| Opportunity scoring weights | Which contacted deals engaged and which went silent | Scoring every new opportunity |
+| Supplier regions | Share of suppliers found in each region that sent a quote | Where supplier research searches first |
+| Ad angles, markets and budgets | Enquiries per click and per dollar, and won deals | Ad planning and optimisation (section 18) |
+
+**How choices are made.** NEXUS uses *Thompson sampling*: for each option it draws a plausible success rate from what it has seen and picks the highest draw. Options with good results win most of the time; options with little data still get tried, so a good idea is never starved and a bad one fades out on its own. Nothing needs tuning.
+
+**Scoring weights: versioned and reversible.** Once a week NEXUS refits the scoring weights to the deals it has contacted (it needs at least 30, with 5+ that engaged and 5+ that did not). The new weights are used only if they rank deals better in cross-validation than the current ones; each weight moves at most 0.10 per week. After activation, NEXUS keeps comparing the new weights with the ones they replaced on the deals that arrive afterwards, and **rolls back automatically** if the new ones do worse. You can also roll back yourself.
+
+**The Learning tab** shows, per product line, each option's results, its likely range and its chance of being the best; the scoring weights in use and their history; the last refit decision; and a short plain-language summary. **Recalculate now** refreshes it; **Roll back scoring weights** restores the previous version.
+
+**What helps it learn:** record every won and lost deal, let the system send enough first e-mails per segment (tens, not handfuls), and avoid changing everything at once.
+
+---
+
+## 20. Alerts on your phone
 
 **Telegram (recommended):**
 
@@ -569,7 +732,7 @@ You receive: new review items (batched every 15 minutes), a daily summary, budge
 
 ---
 
-## 18. Command reference
+## 21. Command reference
 
 On the server, run commands inside the API container:
 
@@ -582,7 +745,8 @@ Locally with Python, use `python -m app.cli <command>`.
 | Command | What it does |
 |---|---|
 | `nexus doctor` | Shows production readiness (missing settings and warnings) and checks the database |
-| `nexus doctor --live` | Also logs in to search, SMTP, IMAP and the AI model |
+| `nexus doctor --live` | Also logs in to search, SMTP, IMAP, the AI model and the Google/Meta ad accounts |
+| `nexus google-ads-token --client-id … --client-secret …` | One-time, on your own computer: gets `GOOGLE_ADS_REFRESH_TOKEN` through your browser |
 | `nexus simulate --days 10` | Runs the simulated world end to end in a throwaway database (safe on a live server) |
 | `nexus run --objective "Title" --categories medical_equipment` | Creates an objective and runs one pass |
 | `nexus report --window 30` | Metrics and budget |
@@ -605,9 +769,9 @@ Worker: `python scripts/worker.py --interval 300` runs continuously; `--once` ru
 
 ---
 
-## 19. API reference
+## 22. API reference
 
-All endpoints except `/health` and `/u/…` require the dashboard login (HTTP Basic).
+All endpoints except `/health`, `/u/…` and the public site (`/p/…`, `/privacy`, `/site`) require the dashboard login (HTTP Basic).
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -635,12 +799,23 @@ All endpoints except `/health` and `/u/…` require the dashboard login (HTTP Ba
 | POST | `/api/suppliers/research` | `{product_category, regions?}`: search for suppliers now |
 | GET/POST | `/api/licenses` | List / register licences |
 | POST | `/api/licenses/{id}/deactivate` | Stop relying on a licence |
+| GET | `/p/{slug}` , `/p/{slug}/wa`, `/privacy`, `/site` | Public landing page, WhatsApp redirect, privacy notice, index (public) |
+| POST | `/p/{slug}/enquiry` | Enquiry form (public, form-encoded) |
+| GET/POST | `/api/pages` | Pages with views, WhatsApp clicks, enquiries / `{product_category, country}` to publish or refresh |
+| GET | `/api/leads` | Enquiries with source and status |
+| GET | `/api/ads/campaigns` | Campaigns with spend, clicks, enquiries, cost per enquiry and every ad |
+| POST | `/api/ads/plan` | `{platform?, product_category?, country?}`: plan campaigns now |
+| POST | `/api/ads/campaigns/{id}` | `{action: pause\|resume\|budget\|remove, daily_budget_usd?}` |
+| GET/POST | `/api/ads/assets?category=&caption=` | Product photos (POST the image as the request body) |
+| POST | `/api/ads/assets/{id}/deactivate` | Stop using a photo |
+| GET | `/api/learning?refresh=` | What NEXUS has learned (see section 19) |
+| POST | `/api/learning/rollback` | Restore the previous scoring weights |
 
 In development (`NEXUS_ENV=development`), interactive API documentation is at `/docs`. It is switched off in production because it would bypass the login.
 
 ---
 
-## 20. Configuration reference
+## 23. Configuration reference
 
 All settings live in `.env` on the server. After changing it, run `docker compose up -d` to apply.
 
@@ -700,15 +875,33 @@ All settings live in `.env` on the server. After changing it, run `docker compos
 | `NOTIFY_CHANNELS` | log | `log`, `telegram`, `email` (comma separated) |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `OPERATOR_EMAIL` | — | Alert destinations |
 | `NOTIFY_MAX_PER_HOUR` | 10 | Alert cap |
-| `BUDGET_MONTHLY_LIMIT_USD` | 200 | Can only be lowered |
+| `BUDGET_MONTHLY_LIMIT_USD` | 500 | Monthly budget; any positive amount |
 | `BUDGET_CATEGORY_LIMITS_JSON` | planning split | Per-line limits |
 | `REQUIRE_OUTREACH_APPROVAL` | false | `true` makes every buyer outreach e-mail, follow-up and supplier RFQ wait for your approval |
 | `REQUIRE_HUMAN_APPROVAL_ABOVE_USD` | 0 | Every financial commitment goes to you |
 | `ALLOW_REGULATED_AUTONOMOUS_TRANSACTIONS` | false | Leave false |
 
+**Public site and advertising**
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `PUBLIC_SITE_URL` | `PUBLIC_BASE_URL` | Address the landing pages are served from (section 17) |
+| `WHATSAPP_NUMBER` | — | Digits with country code; adds a WhatsApp button to pages |
+| `LEAD_RESPONSE_PROMISE` | within one business day | Shown on pages and in acknowledgements; keep it realistic |
+| `ADS_ENABLED` | false | Master switch for advertising in production |
+| `ADS_REQUIRE_LAUNCH_APPROVAL` | true | New campaigns wait in Reviews |
+| `ADS_DEFAULT_DAILY_BUDGET_USD` | 5 | Starting daily budget per campaign |
+| `ADS_MIN_DAILY_BUDGET_USD` | 1 | Budget moves never go below this |
+| `ADS_TARGET_COST_PER_LEAD_USD` | 15 | What an enquiry is worth; drives pausing, cuts and the market prior |
+| `ADS_MAX_CAMPAIGNS_PER_PLATFORM` | 6 | Upper limit of live campaigns per platform |
+| `ADS_PRUNE_MIN_CLICKS` | 150 | Clicks an ad needs before it can be judged |
+| `ADS_FX_RATES_JSON` | — | e.g. `{"KES": 129.5}` when an ad account is not in USD |
+| `GOOGLE_ADS_*` | — | Developer token, OAuth client ID/secret, refresh token, customer ID, manager (login) customer ID, currency, API version (v25), conversion action IDs |
+| `META_*` | — | Access token, ad account ID, Page ID, pixel/dataset ID, account currency, API version (v26.0) |
+
 ---
 
-## 21. Policy rules reference
+## 24. Policy rules reference
 
 These codes appear in the review queue, the System tab and the audit log. **Block** means the action is refused; **escalate** means it waits for you.
 
@@ -738,10 +931,14 @@ These codes appear in the review queue, the System tab and the audit log. **Bloc
 | R-FACT-01 | block | Unsupported figure or claim in the message |
 | R-FACT-02 | block | Message not personalised |
 | R-BUD-01 | block | Budget line or month exhausted |
+| R-ADS-00 | block | Ad launch while `ADS_ENABLED=false` (production) |
+| R-ADS-01 | block | Ad for a product line that is never advertised (pharmaceuticals) |
+| R-ADS-02 | block | Ad copy failed the checks at launch time (facts changed since planning) |
+| R-ADS-03 | escalate | New ad campaign (while `ADS_REQUIRE_LAUNCH_APPROVAL=true`) |
 
 ---
 
-## 22. Backups, updates and recovery
+## 25. Backups, updates and recovery
 
 **Update to a new version:**
 
@@ -768,7 +965,7 @@ The script asks you to type `RESTORE`, stops the API and worker, restores, re-ap
 
 ---
 
-## 23. Troubleshooting
+## 26. Troubleshooting
 
 | Symptom | Likely cause and fix |
 |---|---|
