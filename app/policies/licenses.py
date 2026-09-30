@@ -22,7 +22,8 @@ from app.core.interfaces import EvidenceRecord
 from app.core.types import EvidenceKind, ProductCategory, VerificationStatus
 from app.database.models import Evidence, License
 
-LICENSE_TYPES = {"importer", "distributor", "wholesaler", "exporter", "retailer"}
+LICENSE_TYPE_ORDER = ("importer", "exporter", "distributor", "wholesaler", "retailer")
+LICENSE_TYPES = set(LICENSE_TYPE_ORDER)
 VERIFICATION_LEVELS = {"user_provided", "document_checked", "registry_confirmed"}
 EXPIRY_WARNING_DAYS = 45
 
@@ -77,7 +78,8 @@ def add_license(
         raise LicenseError("holder_name, country and license_number are required")
     if not issuing_authority.strip():
         raise LicenseError("issuing_authority is required")
-    types = sorted({_norm(t) for t in license_types if t})
+    requested = {_norm(t) for t in license_types if t}
+    types = [t for t in LICENSE_TYPE_ORDER if t in requested] + sorted(requested - LICENSE_TYPES)
     if not types:
         raise LicenseError(f"at least one licence type is required: {sorted(LICENSE_TYPES)}")
     unknown_types = [t for t in types if t not in LICENSE_TYPES]
