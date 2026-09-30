@@ -98,7 +98,9 @@ def run_simulation(
                 catalogue.add_price_reference(session, **price)
 
         for day in range(days):
-            loop = orchestrator.run(objective.id)
+            # Like the live worker: all pending work, including work that belongs to no
+            # objective (enquiries, suppliers, ads, learning).
+            loop = orchestrator.run(None)
             jobs = scheduler.run_due()
             report["cycles"].append(
                 {"day": day, "date": clock.now.date().isoformat(), "loop": loop, "jobs": jobs}
@@ -114,7 +116,7 @@ def run_simulation(
         ctx.tasks.create_task(
             agent="learning", objective_id=objective.id, task_input={"window_days": days + 1}, priority=95
         )
-        orchestrator.run(objective.id)
+        orchestrator.run(None)
 
         report["pipeline"] = {
             stage: count

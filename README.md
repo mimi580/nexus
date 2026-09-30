@@ -8,9 +8,10 @@ NEXUS researches markets, finds buyers from real web sources and business
 listings, finds their published contacts, qualifies and scores opportunities,
 finds and vets suppliers and asks them for quotes, matches deals to real
 supplier offers, calculates landed cost and margin, sends personalised
-outreach and follow-ups, reads replies, drafts quotes for your approval and
-learns from outcomes — inside a hard USD 200/month ceiling and a deterministic
-policy layer.
+outreach and follow-ups, reads replies, drafts quotes for your approval,
+publishes landing pages and runs Google and Meta ads (never for
+pharmaceuticals), and improves itself from real outcomes — inside a monthly
+budget (USD 500 by default) and a deterministic policy layer.
 
 **Start here: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)** — setup, deployment,
 daily use, configuration and troubleshooting.
@@ -27,7 +28,8 @@ daily use, configuration and troubleshooting.
 - Send a price or quote without your approval
 - Contact anyone who opted out, complained or bounced
 - Make a financial or legal commitment, or execute a regulated transaction
-- Exceed USD 200 in a month (the ceiling cannot be raised from configuration)
+- Advertise pharmaceuticals, or launch an ad campaign without your approval (by default)
+- Spend beyond the monthly budget you set (all ad spend is booked against it)
 - Loop forever (every loop has iteration, duration, cost, action and stall limits)
 
 ## Five-minute look (no accounts needed)
@@ -48,16 +50,18 @@ HTTPS): see [Deploying to a server](docs/USER_GUIDE.md#6-deploying-to-a-server).
 
 ```
 app/
+  ads/           Google Ads + Meta adapters, ad copy and compliance, planner, optimiser, conversions
   agents/        sales agents, grounded research paths, reply drafting
   api/           FastAPI (login, operator endpoints, unsubscribe)
   audit/         append-only audit trail (escalations open review items)
-  budget/        hard-ceiling ledger
+  budget/        monthly budget ledger (hard stop)
   commercial/    supplier offer catalogue, price book, commercial settings
   core/          config and readiness, types, protocols, context, logging
   dashboard/     single-page control panel
   database/      SQLAlchemy models and session
   economics/     landed cost, margin, ranges
   evaluation/    strategy versioning and rollback
+  learning/      bandits, outcome signals, scoring refit and automatic rollback
   execution/     SMTP sending, IMAP intake (replies, bounces, opt-outs)
   memory/        repositories and deduplication
   models/        model router, Anthropic and OpenAI-compatible providers, mocks
@@ -66,6 +70,7 @@ app/
   review/        human review queue and outcomes
   scheduler/     durable idempotent jobs
   simulation/    fictional world and end-to-end runner
+  site/          landing pages, enquiry intake, public HTML
   tools/         web search providers, safe page fetcher, research service
   notify.py      Telegram / e-mail alerts
 deploy/  docker/  docs/  migrations/  scripts/  tests/
