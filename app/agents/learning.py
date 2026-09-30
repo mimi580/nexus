@@ -17,11 +17,15 @@ from app.core.types import ModelTier, OpportunityStage
 from app.database.models import (
     Company,
     Experiment,
+    Interaction,
     Message,
     Opportunity,
     Outcome,
     Strategy,
 )
+
+
+POSITIVE_CATEGORIES = ("interested", "information_request", "price_request", "rfq", "negotiation")
 
 
 def metrics(ctx: RunContext, window_days: int = 30) -> dict:
@@ -35,20 +39,25 @@ def metrics(ctx: RunContext, window_days: int = 30) -> dict:
     )
     inbound = list(
         ctx.session.scalars(
-            select(Message).where(Message.direction == "inbound", Message.created_at >= since)
+            select(Message).where(
+                Message.direction == "inbound",
+                Message.status.in_(("received", "processed")),  # not bounces, auto-replies or strangers
+                Message.created_at >= since,
+            )
         )
     )
     opportunities = list(ctx.session.scalars(select(Opportunity)))
     qualified = [o for o in opportunities if o.score and o.score > 0]
     won = [o for o in opportunities if o.stage == OpportunityStage.WON.value]
-    positive = [
-        i
-        for i in inbound
-        if any(
-            token in (i.body or "").lower()
-            for token in ("relevant", "pricing", "rfq", "more detail", "reviewing options")
+    positive = list(
+        ctx.session.scalars(
+            select(Interaction).where(
+                Interaction.direction == "inbound",
+                Interaction.category.in_(POSITIVE_CATEGORIES),
+                Interaction.created_at >= since,
+            )
         )
-    ]
+    )
     spend = ctx.budget.snapshot()
     total_cost = spend["committed_usd"]
     pipeline = round(sum(o.estimated_margin_usd or 0.0 for o in opportunities if o.stage not in {

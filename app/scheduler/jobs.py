@@ -108,10 +108,53 @@ def monthly_budget_review(ctx: RunContext) -> dict:
 
 def daily_report(ctx: RunContext) -> dict:
     from app.agents.learning import metrics
+    from app.notify import dashboard_link, notify
+    from app.review.queue import counts
 
     data = metrics(ctx, window_days=1)
     ctx.audit.record("daily_report", summary="daily activity report", decision="allow", **data)
+    budget = ctx.budget.snapshot()
+    pending = counts(ctx.session).get("pending", 0)
+    lines = [
+        f"Messages sent (24h): {data.get('messages_sent', 0)}",
+        f"Replies (24h): {data.get('replies', 0)}",
+        f"Awaiting your review: {pending}",
+        f"Budget used this month: ${budget['committed_usd']:.2f} of ${budget['limit_usd']:.0f}",
+        f"Dashboard: {dashboard_link(ctx.settings)}",
+    ]
+    notify(ctx, "Daily summary", "\n".join(lines), dedupe_key=f"daily:{ctx.now.date().isoformat()}")
     return data
+
+
+def notify_reviews(ctx: RunContext) -> dict:
+    """Tell the operator about new review items and hard stops, batched."""
+    from app.database.models import ReviewItem
+    from app.notify import dashboard_link, notify
+
+    fresh = list(
+        ctx.session.scalars(
+            select(ReviewItem)
+            .where(ReviewItem.status == "pending", ReviewItem.notified_at.is_(None))
+            .order_by(ReviewItem.created_at)
+        )
+    )
+    sent = 0
+    if fresh:
+        lines = [f"- [{item.kind}] {item.title[:140]}" for item in fresh[:10]]
+        if len(fresh) > 10:
+            lines.append(f"...and {len(fresh) - 10} more")
+        lines.append(f"Review: {dashboard_link(ctx.settings, '#reviews')}")
+        notify(ctx, f"{len(fresh)} item(s) need your decision", "\n".join(lines),
+               dedupe_key=f"reviews:{fresh[-1].id}")
+        for item in fresh:
+            item.notified_at = ctx.now
+        sent += 1
+    if ctx.budget.hard_stopped():
+        notify(ctx, "Budget ceiling reached - NEXUS has stopped paid work",
+               "The monthly budget is exhausted. Paid actions resume next month.",
+               dedupe_key=f"budget_stop:{ctx.now.strftime('%Y-%m')}")
+    ctx.session.flush()
+    return {"items": len(fresh), "notifications": sent}
 
 
 def license_expiry_check(ctx: RunContext) -> dict:
@@ -210,4 +253,5 @@ DEFAULT_JOBS = {
     "monthly_budget_review": (monthly_budget_review, 30 * 24 * 3600),
     "license_expiry_check": (license_expiry_check, 24 * 3600),
     "catalogue_recheck": (catalogue_recheck, 6 * 3600),
+    "notify_reviews": (notify_reviews, 900),
 }

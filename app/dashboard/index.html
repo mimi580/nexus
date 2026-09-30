@@ -6,207 +6,422 @@
 <title>NEXUS control</title>
 <style>
   :root {
-    --ink: #0d1117;
-    --panel: #151b23;
-    --line: #232c38;
-    --text: #e6eaf0;
-    --muted: #8b95a7;
-    --go: #3fb68b;
-    --hold: #e0a32e;
-    --stop: #e2564d;
-    --flow: #5a8dee;
+    --ink: #0d1117; --panel: #151b23; --panel2: #1b222c; --line: #232c38;
+    --text: #e6eaf0; --muted: #8b95a7; --go: #3fb68b; --hold: #e0a32e; --stop: #e2564d; --flow: #5a8dee;
     --radius: 6px;
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--ink);
-    color: var(--text);
+  body { margin: 0; background: var(--ink); color: var(--text);
     font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-variant-numeric: tabular-nums;
-  }
-  header {
-    display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
-    padding: 20px 24px; border-bottom: 1px solid var(--line);
-  }
-  header h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
-  header .mode { color: var(--muted); font-size: 13px; }
-  main { padding: 24px; display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); max-width: 1400px; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; }
-  section h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 14px; }
-  .headline { font-size: 34px; font-weight: 600; line-height: 1.1; }
-  .headline span { font-size: 14px; color: var(--muted); font-weight: 400; }
+    font-variant-numeric: tabular-nums; }
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 16px 24px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 19px; font-weight: 600; margin: 0; }
+  .pill { font-size: 12.5px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .pill.go { color: var(--go); border-color: #1f4a3a; } .pill.hold { color: var(--hold); border-color: #4d3b18; } .pill.stop { color: #ffb4ad; border-color: #4a2320; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; padding: 10px 24px 0; border-bottom: 1px solid var(--line); }
+  nav button { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; color: var(--muted); padding: 8px 12px; }
+  nav button.active { color: var(--text); border-bottom-color: var(--flow); }
+  nav .badge { background: var(--hold); color: #1b1300; border-radius: 999px; font-size: 11.5px; padding: 0 7px; margin-left: 6px; font-weight: 600; }
+  main { padding: 20px 24px 60px; max-width: 1400px; }
+  .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; min-width: 0; }
+  section h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .headline { font-size: 32px; font-weight: 600; line-height: 1.1; } .headline span { font-size: 14px; color: var(--muted); font-weight: 400; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  td { padding: 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12.5px; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 7px 8px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
   tr:last-child td { border-bottom: none; }
-  td.value { text-align: right; color: var(--text); white-space: nowrap; }
-  td.label { color: var(--muted); }
+  td.value { text-align: right; white-space: nowrap; } td.label { color: var(--muted); }
+  .scroll { overflow-x: auto; }
   .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 10px 0 14px; }
-  .bar > i { display: block; height: 100%; background: var(--go); }
-  .bar.warn > i { background: var(--hold); }
-  .bar.over > i { background: var(--stop); }
-  .stage { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
-  .stage:last-child { border-bottom: none; }
-  .stage em { font-style: normal; color: var(--muted); }
+  .bar > i { display: block; height: 100%; background: var(--go); } .bar.warn > i { background: var(--hold); } .bar.over > i { background: var(--stop); }
   ul { list-style: none; margin: 0; padding: 0; font-size: 13.5px; }
-  li { padding: 7px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
-  li:last-child { border-bottom: none; }
+  li { padding: 7px 0; border-bottom: 1px solid var(--line); color: var(--muted); } li:last-child { border-bottom: none; }
   li b { color: var(--text); font-weight: 500; display: block; }
-  .flag { color: var(--hold); }
-  .flag.block { color: var(--stop); }
-  .controls { display: flex; gap: 10px; flex-wrap: wrap; }
-  button {
-    font: inherit; font-size: 14px; padding: 8px 14px; border-radius: var(--radius);
-    border: 1px solid var(--line); background: #1d2632; color: var(--text); cursor: pointer;
-  }
-  button:hover { border-color: #33404f; }
-  button:focus-visible { outline: 2px solid var(--flow); outline-offset: 2px; }
-  button.stop { border-color: #4a2320; color: #ffb4ad; background: #2a1917; }
-  .status { font-size: 13px; color: var(--muted); margin-top: 12px; min-height: 18px; }
+  .warn-text { color: var(--hold); } .stop-text { color: #ffb4ad; } .go-text { color: var(--go); }
+  .muted { color: var(--muted); } .small { font-size: 12.5px; }
+  button { font: inherit; font-size: 14px; padding: 7px 13px; border-radius: var(--radius); border: 1px solid var(--line);
+    background: #1d2632; color: var(--text); cursor: pointer; }
+  button:hover { border-color: #3a4757; } button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--flow); outline-offset: 2px; }
+  button.primary { background: #1c3a2f; border-color: #28573f; } button.danger { background: #2a1917; border-color: #4a2320; color: #ffb4ad; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input, textarea, select { font: inherit; font-size: 14px; background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 7px 9px; max-width: 100%; }
+  textarea { width: 100%; min-height: 70px; resize: vertical; }
+  label { font-size: 12.5px; color: var(--muted); display: block; margin: 8px 0 3px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px; }
+  .card h3 { margin: 0 0 4px; font-size: 15.5px; font-weight: 600; }
+  .kind { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--flow); }
+  .draft { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; white-space: pre-wrap;
+    font-size: 13.5px; margin: 8px 0; max-height: 320px; overflow: auto; }
+  .banner { border: 1px solid #4d3b18; background: #221a0b; border-radius: var(--radius); padding: 12px 16px; margin-bottom: 18px; font-size: 14px; }
+  .banner ul li { color: var(--text); border: none; padding: 2px 0; }
   .empty { color: var(--muted); font-size: 13.5px; }
-  @media (prefers-reduced-motion: no-preference) { .bar > i { transition: width .3s ease; } }
+  #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #202a36; border: 1px solid var(--line);
+    padding: 9px 16px; border-radius: var(--radius); font-size: 14px; display: none; max-width: 90vw; z-index: 5; }
+  .hidden { display: none; }
+  @media (max-width: 600px) { header, nav, main { padding-left: 16px; padding-right: 16px; } .headline { font-size: 26px; } }
 </style>
 </head>
 <body>
 <header>
   <h1>NEXUS control</h1>
-  <span class="mode" id="mode">loading…</span>
+  <span class="pill" id="mode">loading…</span>
+  <span class="pill" id="run-state"></span>
 </header>
-
+<nav id="tabs">
+  <button data-tab="overview" class="active">Overview</button>
+  <button data-tab="reviews">Reviews <span class="badge hidden" id="review-badge">0</span></button>
+  <button data-tab="pipeline">Pipeline</button>
+  <button data-tab="catalogue">Catalogue</button>
+  <button data-tab="licences">Licences</button>
+  <button data-tab="settings">Settings</button>
+  <button data-tab="system">System</button>
+</nav>
 <main>
-  <section>
-    <h2>Budget this period</h2>
-    <div class="headline" id="budget-remaining">—<span> remaining</span></div>
-    <div class="bar" id="budget-bar"><i style="width:0%"></i></div>
-    <table id="budget-table"></table>
-  </section>
+  <div id="readiness"></div>
 
-  <section>
-    <h2>Pipeline</h2>
-    <div id="pipeline"><p class="empty">No opportunities yet.</p></div>
-  </section>
+  <!-- OVERVIEW -->
+  <div data-panel="overview" class="grid">
+    <section>
+      <h2>Budget this month</h2>
+      <div class="headline" id="budget-remaining">—</div>
+      <div class="bar" id="budget-bar"><i style="width:0%"></i></div>
+      <table id="budget-table"></table>
+    </section>
+    <section><h2>Pipeline</h2><table id="pipeline-stages"></table></section>
+    <section><h2>Results (30 days)</h2><table id="metrics"></table></section>
+    <section>
+      <h2>Controls</h2>
+      <div class="row">
+        <button id="run" class="primary">Run a pass now</button>
+        <button id="pause">Pause</button>
+        <button id="resume">Resume</button>
+        <button id="stop" class="danger">Emergency stop</button>
+      </div>
+      <p class="small muted">Emergency stop halts all agent work until you press Resume. The background worker also runs passes on its own schedule.</p>
+      <h2 style="margin-top:18px">New objective</h2>
+      <input id="obj-title" placeholder="e.g. Medical equipment pipeline in East Africa" style="width:100%">
+      <div class="row" id="obj-cats" style="margin-top:8px"></div>
+      <div class="row" style="margin-top:8px"><button id="obj-create">Create objective</button></div>
+    </section>
+  </div>
 
-  <section>
-    <h2>Results</h2>
-    <table id="metrics"></table>
-  </section>
-
-  <section>
-    <h2>Blocked and escalated</h2>
-    <ul id="blocked"><li class="empty">Nothing held back.</li></ul>
-  </section>
-
-  <section>
-    <h2>Compliance</h2>
-    <ul id="compliance"><li class="empty">No compliance events.</li></ul>
-  </section>
-
-  <section>
-    <h2>Errors</h2>
-    <ul id="errors"><li class="empty">No failed tasks.</li></ul>
-  </section>
-
-  <section>
-    <h2>Controls</h2>
-    <div class="controls">
-      <button id="run">Run a pass</button>
-      <button id="pause">Pause</button>
-      <button id="resume">Resume</button>
-      <button id="stop" class="stop">Emergency stop</button>
+  <!-- REVIEWS -->
+  <div data-panel="reviews" class="hidden">
+    <div class="row" style="margin-bottom:12px">
+      <select id="review-filter">
+        <option value="pending">Waiting for you</option><option value="approved">Approved</option>
+        <option value="rejected">Rejected</option><option value="resolved">Resolved</option><option value="all">All</option>
+      </select>
+      <span class="small muted">Approve sends the exact draft shown (all safety checks still apply). Reject closes the deal and the action is never proposed again. Resolve means you handled it yourself.</span>
     </div>
-    <p class="status" id="status"></p>
-  </section>
+    <div id="review-list"></div>
+  </div>
+
+  <!-- PIPELINE -->
+  <div data-panel="pipeline" class="hidden">
+    <div class="row" style="margin-bottom:12px">
+      <select id="stage-filter"><option value="">All stages</option></select>
+    </div>
+    <section class="scroll"><table id="opp-table"></table></section>
+  </div>
+
+  <!-- CATALOGUE -->
+  <div data-panel="catalogue" class="hidden">
+    <div class="grid">
+      <section>
+        <h2>Import from CSV</h2>
+        <p class="small muted">Offers are real supplier quotes; prices are what buyers pay. Every row needs a source. A file with any bad row imports nothing and lists the problems.</p>
+        <div class="row">
+          <select id="import-kind"><option value="offers">Supplier offers</option><option value="prices">Selling prices</option></select>
+          <button id="template">Download template</button>
+        </div>
+        <div class="row" style="margin-top:8px"><input type="file" id="import-file" accept=".csv,text/csv"><button id="import" class="primary">Import</button></div>
+        <ul id="import-errors" style="margin-top:8px"></ul>
+      </section>
+    </div>
+    <section class="scroll" style="margin-top:18px"><h2>Supplier offers</h2><table id="offers-table"></table></section>
+    <section class="scroll" style="margin-top:18px"><h2>Selling-price book</h2><table id="prices-table"></table></section>
+  </div>
+
+  <!-- LICENCES -->
+  <div data-panel="licences" class="hidden">
+    <section class="scroll"><h2>Registered licences</h2><table id="lic-table"></table></section>
+    <section style="margin-top:18px">
+      <h2>Register a licence</h2>
+      <div class="grid" style="gap:10px">
+        <div><label>Holder (as on licence)</label><input id="lic-holder" style="width:100%"></div>
+        <div><label>Issuing country</label><input id="lic-country" value="Kenya" style="width:100%"></div>
+        <div><label>Issuing authority</label><input id="lic-authority" style="width:100%"></div>
+        <div><label>Licence number</label><input id="lic-number" style="width:100%"></div>
+        <div><label>Types (comma separated)</label><input id="lic-types" value="importer, distributor" style="width:100%"></div>
+        <div><label>Categories (comma separated)</label><input id="lic-cats" value="medical_equipment, pharmaceutical" style="width:100%"></div>
+        <div><label>Regional scope</label><input id="lic-regions" value="EAC, COMESA" style="width:100%"></div>
+        <div><label>Valid from</label><input id="lic-from" type="date" style="width:100%"></div>
+        <div><label>Expires</label><input id="lic-expires" type="date" style="width:100%"></div>
+      </div>
+      <div class="row" style="margin-top:10px"><button id="lic-add" class="primary">Register licence</button></div>
+    </section>
+  </div>
+
+  <!-- SETTINGS -->
+  <div data-panel="settings" class="hidden">
+    <section>
+      <h2>Commercial settings</h2>
+      <p class="small muted">Minimum margins (%), typical order sizes, duty/tax rates as fractions by country (0.16 = 16%), required supplier documents and target markets per category. Duty rates you leave out stay unknown and are flagged in every deal.</p>
+      <textarea id="commercial" style="min-height:420px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px"></textarea>
+      <div class="row" style="margin-top:8px"><button id="save-commercial" class="primary">Save settings</button></div>
+    </section>
+    <section style="margin-top:18px">
+      <h2>Pause by category or country</h2>
+      <label>Paused categories (comma separated)</label><input id="paused-cats" style="width:100%">
+      <label>Paused countries (comma separated)</label><input id="paused-geos" style="width:100%">
+      <div class="row" style="margin-top:8px"><button id="save-pauses">Save pauses</button></div>
+    </section>
+  </div>
+
+  <!-- SYSTEM -->
+  <div data-panel="system" class="hidden grid">
+    <section><h2>Blocked and escalated</h2><ul id="blocked"></ul></section>
+    <section><h2>Compliance</h2><ul id="compliance"></ul></section>
+    <section><h2>Failed tasks</h2><ul id="errors"></ul></section>
+    <section><h2>Objectives</h2><ul id="objectives"></ul></section>
+  </div>
 </main>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
-const fmt = (n) => "$" + Number(n || 0).toFixed(2);
+const CATEGORIES = ["refurbished_laptop", "used_iphone", "medical_equipment", "pharmaceutical", "server_it"];
 const el = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const money = (n) => n == null ? "—" : "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const pct = (n) => ((n || 0) * 100).toFixed(1) + "%";
+const range = (r, f = money) => Array.isArray(r) ? (r[0] === r[1] ? f(r[0]) : `${f(r[0])} – ${f(r[1])}`) : "—";
+const words = (s) => esc(String(s || "").replace(/_/g, " "));
+const csvList = (v) => v.split(",").map((s) => s.trim()).filter(Boolean);
+let state = null;
+let activeTab = location.hash.replace("#", "") || "overview";
 
-function rows(target, pairs) {
-  target.innerHTML = pairs
-    .map(([k, v]) => `<tr><td class="label">${k}</td><td class="value">${v}</td></tr>`)
-    .join("");
+function toast(msg) { const t = el("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 4500); }
+
+async function api(path, options = {}) {
+  const res = await fetch(path, { headers: { "content-type": "application/json" }, ...options });
+  let data = null;
+  try { data = await res.json(); } catch (_) { /* empty body */ }
+  if (!res.ok) {
+    const detail = data && data.detail ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : res.statusText;
+    throw new Error(detail);
+  }
+  return data;
 }
+async function act(fn, done) { try { await fn(); if (done) toast(done); await refresh(); } catch (e) { toast("Failed: " + e.message); } }
 
+function rows(target, pairs) { target.innerHTML = pairs.map(([k, v]) => `<tr><td class="label">${esc(k)}</td><td class="value">${v}</td></tr>`).join(""); }
 function list(target, items, empty) {
-  target.innerHTML = items.length
-    ? items.map((i) => `<li><b class="${i.cls || ''}">${i.title}</b>${i.detail || ""}</li>`).join("")
-    : `<li class="empty">${empty}</li>`;
+  target.innerHTML = items.length ? items.map((i) => `<li><b class="${i.cls || ""}">${esc(i.title)}</b>${esc(i.detail || "")}</li>`).join("") : `<li class="empty">${esc(empty)}</li>`;
 }
 
-async function refresh() {
-  const res = await fetch("/api/state");
-  if (!res.ok) { el("status").textContent = "State unavailable. Check the API logs."; return; }
-  const s = await res.json();
+function showTab(name) {
+  activeTab = name;
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll("[data-panel]").forEach((p) => p.classList.toggle("hidden", p.dataset.panel !== name));
+  history.replaceState(null, "", "#" + name);
+  loadTab();
+}
+document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => showTab(b.dataset.tab));
 
-  const control = s.control || {};
-  el("mode").textContent = control.emergency_stop
-    ? "emergency stop engaged"
-    : control.paused ? "paused" : "running";
+// ------------------------------------------------------------------ overview
+function renderOverview(s) {
+  const c = s.control || {};
+  const mode = el("mode");
+  mode.textContent = s.mode === "production" ? "production" : "simulation (nothing is really sent)";
+  mode.className = "pill " + (s.mode === "production" ? "go" : "hold");
+  const rs = el("run-state");
+  rs.textContent = c.emergency_stop ? "emergency stop" : c.paused ? "paused" : "running";
+  rs.className = "pill " + (c.emergency_stop ? "stop" : c.paused ? "hold" : "go");
+
+  const r = s.readiness || { missing: [], warnings: [] };
+  el("readiness").innerHTML = (r.missing.length || r.warnings.length) ? `<div class="banner">
+      ${r.missing.length ? `<b>${s.mode === "production" ? "Production is refusing to run until these are set" : "Needed before production"}:</b><ul>${r.missing.map((m) => `<li>• ${esc(m)}</li>`).join("")}</ul>` : ""}
+      ${r.warnings.length ? `<b class="warn-text">Warnings:</b><ul>${r.warnings.map((m) => `<li>• ${esc(m)}</li>`).join("")}</ul>` : ""}
+    </div>` : "";
 
   const b = s.budget;
-  el("budget-remaining").innerHTML = `${fmt(b.remaining_usd)}<span> of ${fmt(b.limit_usd)} remaining</span>`;
+  el("budget-remaining").innerHTML = `${money(b.remaining_usd)}<span> of ${money(b.limit_usd)} left</span>`;
   const used = b.limit_usd ? (b.limit_usd - b.remaining_usd) / b.limit_usd : 0;
-  const bar = el("budget-bar");
-  bar.className = "bar" + (used > 0.9 ? " over" : used > 0.7 ? " warn" : "");
+  const bar = el("budget-bar"); bar.className = "bar" + (used > 0.9 ? " over" : used > 0.7 ? " warn" : "");
   bar.firstElementChild.style.width = Math.min(100, used * 100).toFixed(1) + "%";
-  rows(el("budget-table"), [
-    ["Committed", fmt(b.committed_usd)],
-    ["Reserved", fmt(b.reserved_usd)],
-    ["Month-end forecast", fmt(b.forecast_usd)],
-    ["Hard stop", b.hard_stopped ? "engaged" : "clear"],
-  ]);
+  rows(el("budget-table"), [["Spent", money(b.committed_usd)], ["Reserved", money(b.reserved_usd)],
+    ["Month-end forecast", money(b.forecast_usd)], ["Hard stop", b.hard_stopped ? '<span class="stop-text">engaged</span>' : "clear"]]);
 
   const stages = Object.entries(s.pipeline || {});
-  el("pipeline").innerHTML = stages.length
-    ? stages.map(([k, v]) => `<div class="stage"><em>${k.replace(/_/g, " ")}</em><span>${v}</span></div>`).join("")
-    : '<p class="empty">No opportunities yet.</p>';
+  el("pipeline-stages").innerHTML = stages.length ? stages.map(([k, v]) => `<tr><td class="label">${words(k)}</td><td class="value">${v}</td></tr>`).join("") : '<tr><td class="empty">No opportunities yet.</td></tr>';
 
   const m = s.metrics || {};
-  rows(el("metrics"), [
-    ["Messages sent", m.messages_sent ?? 0],
-    ["Replies", m.replies ?? 0],
-    ["Qualified response rate", ((m.qualified_response_rate || 0) * 100).toFixed(1) + "%"],
-    ["Open pipeline margin", fmt(m.pipeline_margin_usd)],
-    ["Cost per qualified lead", m.cost_per_qualified_lead_usd == null ? "—" : fmt(m.cost_per_qualified_lead_usd)],
-    ["Tasks queued", (s.tasks && (s.tasks.pending || 0)) + (s.tasks && (s.tasks.running || 0) || 0)],
-  ]);
+  rows(el("metrics"), [["Messages sent", m.messages_sent ?? 0], ["Replies", m.replies ?? 0],
+    ["Positive reply rate", pct(m.qualified_response_rate)], ["Deals won", m.won ?? 0],
+    ["Open pipeline margin", money(m.pipeline_margin_usd)],
+    ["Cost per qualified lead", m.cost_per_qualified_lead_usd == null ? "—" : money(m.cost_per_qualified_lead_usd)]]);
 
-  list(el("blocked"), (s.blocked_actions || []).map((a) => ({
-    title: a.summary || a.type,
-    cls: "flag" + (a.decision === "block" ? " block" : ""),
-    detail: `${a.decision} · ${a.at.replace("T", " ").slice(0, 16)}`,
-  })), "Nothing held back.");
+  const pending = (s.reviews || {}).pending || 0;
+  const badge = el("review-badge"); badge.textContent = pending; badge.classList.toggle("hidden", !pending);
 
-  list(el("compliance"), (s.compliance || []).map((c) => ({
-    title: c.flag.replace(/_/g, " "),
-    cls: "flag" + (c.severity === "high" ? " block" : ""),
-    detail: c.detail,
-  })), "No compliance events.");
-
-  list(el("errors"), (s.errors || []).map((e) => ({
-    title: e.agent, detail: e.error,
-  })), "No failed tasks.");
+  list(el("blocked"), (s.blocked_actions || []).map((a) => ({ title: a.summary || a.type, cls: a.decision === "block" ? "stop-text" : "warn-text", detail: `${a.decision} · ${a.at.replace("T", " ").slice(0, 16)}` })), "Nothing held back.");
+  list(el("compliance"), (s.compliance || []).map((x) => ({ title: String(x.flag).replace(/_/g, " "), cls: x.severity === "high" ? "stop-text" : "warn-text", detail: x.detail })), "No compliance events.");
+  list(el("errors"), (s.errors || []).map((e) => ({ title: e.agent, detail: e.error })), "No failed tasks.");
+  list(el("objectives"), (s.objectives || []).map((o) => ({ title: o.title, detail: `${o.status} · ${(o.categories || []).join(", ")}` })), "No objectives yet.");
+  if (document.activeElement !== el("paused-cats")) el("paused-cats").value = (c.paused_categories || []).join(", ");
+  if (document.activeElement !== el("paused-geos")) el("paused-geos").value = (c.paused_geographies || []).join(", ");
 }
 
-async function post(path, body) {
-  el("status").textContent = "Working…";
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body || {}),
+el("obj-cats").innerHTML = CATEGORIES.map((c) => `<label style="display:inline-flex;gap:5px;margin:0 10px 0 0;color:var(--text)"><input type="checkbox" value="${c}">${words(c)}</label>`).join("");
+el("obj-create").onclick = () => act(() => api("/api/objectives", { method: "POST", body: JSON.stringify({
+  title: el("obj-title").value.trim(), product_categories: [...el("obj-cats").querySelectorAll("input:checked")].map((i) => i.value) }) }), "Objective created");
+el("run").onclick = () => act(() => api("/api/run", { method: "POST" }), "Pass finished");
+el("pause").onclick = () => act(() => api("/api/control", { method: "POST", body: JSON.stringify({ paused: true }) }), "Paused");
+el("resume").onclick = () => act(() => api("/api/control", { method: "POST", body: JSON.stringify({ paused: false, emergency_stop: false }) }), "Resumed");
+el("stop").onclick = () => { if (confirm("Stop all agent work now?")) act(() => api("/api/control", { method: "POST", body: JSON.stringify({ emergency_stop: true }) }), "Emergency stop engaged"); };
+
+// ------------------------------------------------------------------ reviews
+function econLine(e) {
+  if (!e || !e.gross_margin_pct) return "";
+  return `<div class="small muted">Qty ${esc(e.quantity)} · revenue ${range(e.revenue_usd)} · margin ${range(e.gross_margin_pct, (x) => Number(x).toFixed(1) + "%")}${(e.unknowns || []).length ? ` · <span class="warn-text">unknown: ${esc(e.unknowns.join(", "))}</span>` : ""}</div>`;
+}
+async function loadReviews() {
+  const items = await api("/api/reviews?status=" + el("review-filter").value);
+  el("review-list").innerHTML = items.length ? items.map((i) => {
+    const a = i.action || {}; const o = i.opportunity;
+    const isSend = i.kind === "outreach_approval";
+    const decided = i.status !== "pending";
+    return `<div class="card" data-id="${esc(i.id)}">
+      <div class="kind">${words(i.kind)}${i.occurrences > 1 ? ` · raised ${i.occurrences}×` : ""}</div>
+      <h3>${esc(i.title)}</h3>
+      ${o ? `<div class="small muted">${esc(o.company)} · ${esc(o.country)} · ${words(o.category)} · stage ${words(o.stage)}</div>${econLine(o.economics)}` : ""}
+      ${(i.reasons || []).length ? `<ul style="margin-top:6px">${i.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+      ${a.body ? `<div class="small muted" style="margin-top:6px">To ${esc(a.to || a.from || "")}${a.subject ? " · " + esc(a.subject) : ""}</div><div class="draft">${esc(a.body)}</div>` : ""}
+      ${i.last_reply ? `<div class="small muted">Their latest reply:</div><div class="draft">${esc(i.last_reply.body)}</div>` : ""}
+      ${decided ? `<div class="small muted">${esc(i.status)} by ${esc(i.decided_by)} ${esc((i.decided_at || "").slice(0, 16).replace("T", " "))}${i.decision_note ? " · " + esc(i.decision_note) : ""}</div>` : `
+      <textarea placeholder="Note (optional): why, what you agreed, next step"></textarea>
+      <div class="row" style="margin-top:8px">
+        ${isSend ? `<button class="primary" data-d="approve">Approve and send</button>` : `<button class="primary" data-d="resolve">Mark resolved</button>`}
+        <button class="danger" data-d="reject">Reject${o ? " (close deal)" : ""}</button>
+      </div>`}
+    </div>`;
+  }).join("") : '<p class="empty">Nothing here.</p>';
+  el("review-list").querySelectorAll("button[data-d]").forEach((btn) => btn.onclick = () => {
+    const card = btn.closest(".card");
+    const note = card.querySelector("textarea").value;
+    btn.disabled = true;
+    act(() => api(`/api/reviews/${card.dataset.id}/decision`, { method: "POST", body: JSON.stringify({ decision: btn.dataset.d, note }) }), "Decision recorded").then(loadReviews);
   });
-  el("status").textContent = res.ok ? "Done." : "That request failed. Check the API logs.";
-  await refresh();
 }
+el("review-filter").onchange = loadReviews;
 
-el("run").onclick = () => post("/api/run");
-el("pause").onclick = () => post("/api/control", { paused: true });
-el("resume").onclick = () => post("/api/control", { paused: false, emergency_stop: false });
-el("stop").onclick = () => post("/api/control", { emergency_stop: true });
+// ------------------------------------------------------------------ pipeline
+async function loadPipeline() {
+  const stage = el("stage-filter").value;
+  const opps = await api("/api/opportunities?limit=300" + (stage ? "&stage=" + stage : ""));
+  const known = new Set([...el("stage-filter").options].map((o) => o.value));
+  Object.keys((state && state.pipeline) || {}).forEach((s) => { if (!known.has(s)) el("stage-filter").insertAdjacentHTML("beforeend", `<option value="${esc(s)}">${words(s)}</option>`); });
+  el("opp-table").innerHTML = `<tr><th>Organisation</th><th>Category</th><th>Stage</th><th>Score</th><th>Contact</th><th>Est. margin</th><th></th></tr>` +
+    (opps.length ? opps.map((o) => `<tr data-id="${esc(o.id)}">
+      <td>${esc(o.company)}<div class="small muted">${esc(o.country)}${o.blocked_reason ? ` · <span class="warn-text">${esc(o.blocked_reason)}</span>` : ""}</div></td>
+      <td>${words(o.category)}</td><td>${words(o.stage)}</td><td>${o.score}</td>
+      <td>${o.contact ? `${esc(o.contact.name)}<div class="small muted">${esc(o.contact.email || "")}</div>` : "—"}</td>
+      <td>${money(o.estimated_margin_usd)}</td>
+      <td style="white-space:nowrap">${["won", "lost"].includes(o.stage) ? "" : `<button data-r="won">Won</button> <button data-r="lost">Lost</button>`}</td></tr>`).join("")
+      : `<tr><td class="empty" colspan="7">No opportunities.</td></tr>`);
+  el("opp-table").querySelectorAll("button[data-r]").forEach((btn) => btn.onclick = () => {
+    const id = btn.closest("tr").dataset.id; const result = btn.dataset.r;
+    const body = { result, note: prompt(`Note for this ${result} deal (optional)`) || "" };
+    if (result === "won") {
+      const rev = prompt("Revenue in USD (optional)"); const mar = prompt("Gross margin in USD (optional)");
+      if (rev) body.revenue_usd = Number(rev); if (mar) body.margin_usd = Number(mar);
+    }
+    act(() => api(`/api/opportunities/${id}/outcome`, { method: "POST", body: JSON.stringify(body) }), "Outcome recorded").then(loadPipeline);
+  });
+}
+el("stage-filter").onchange = loadPipeline;
 
+// ------------------------------------------------------------------ catalogue
+async function loadCatalogue() {
+  const [offers, prices] = await Promise.all([api("/api/catalogue/offers"), api("/api/catalogue/prices")]);
+  el("offers-table").innerHTML = `<tr><th>Product</th><th>Supplier</th><th>Unit cost</th><th>Qty</th><th>Terms</th><th>Valid until</th><th>Source</th><th></th></tr>` +
+    (offers.length ? offers.map((o) => `<tr data-id="${esc(o.id)}"><td>${esc(o.product_name)}<div class="small muted">${words(o.product_category)} · ${esc(o.condition || "")}</div></td>
+      <td>${esc(o.supplier)}<div class="small muted">${esc(o.supplier_country || "")}</div></td><td>${range(o.unit_cost_usd)}</td>
+      <td>${esc(o.quantity_available ?? "—")}</td><td class="small">${esc([o.incoterm, o.payment_terms, o.lead_time_days ? o.lead_time_days + " days" : ""].filter(Boolean).join(" · "))}</td>
+      <td>${esc(o.valid_until || "—")}</td><td class="small">${esc(o.source)}</td><td><button data-k="offers">Retire</button></td></tr>`).join("")
+      : `<tr><td class="empty" colspan="8">No supplier offers. In production, deals wait in review until you add some.</td></tr>`);
+  el("prices-table").innerHTML = `<tr><th>Category</th><th>Product</th><th>Country</th><th>Unit price</th><th>Basis</th><th>Valid until</th><th></th></tr>` +
+    (prices.length ? prices.map((p) => `<tr data-id="${esc(p.id)}"><td>${words(p.product_category)}</td><td>${esc(p.product_name || "any")}</td><td>${esc(p.country || "all")}</td>
+      <td>${range(p.unit_price_usd)}</td><td class="small">${esc(p.basis)}<div class="muted">${esc(p.source)}</div></td><td>${esc(p.valid_until || "—")}</td><td><button data-k="prices">Retire</button></td></tr>`).join("")
+      : `<tr><td class="empty" colspan="7">No selling prices yet.</td></tr>`);
+  document.querySelectorAll("#offers-table button, #prices-table button").forEach((btn) => btn.onclick = () => {
+    if (!confirm("Stop using this entry?")) return;
+    act(() => api(`/api/catalogue/${btn.dataset.k}/${btn.closest("tr").dataset.id}/deactivate`, { method: "POST" }), "Retired").then(loadCatalogue);
+  });
+}
+el("template").onclick = async () => {
+  const kind = el("import-kind").value; const t = await api("/api/catalogue/template/" + kind);
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([t.csv], { type: "text/csv" })); a.download = `nexus-${kind}.csv`; a.click();
+};
+el("import").onclick = async () => {
+  const file = el("import-file").files[0]; if (!file) return toast("Choose a CSV file first");
+  try {
+    const result = await api("/api/catalogue/import?kind=" + el("import-kind").value, { method: "POST", headers: { "content-type": "text/csv" }, body: await file.text() });
+    el("import-errors").innerHTML = (result.errors || []).map((e) => `<li class="stop-text">${esc(e)}</li>`).join("");
+    toast(result.errors.length ? "Nothing imported — fix the rows listed" : `Imported ${result.imported} rows`);
+    loadCatalogue();
+  } catch (e) { toast("Failed: " + e.message); }
+};
+
+// ------------------------------------------------------------------ licences
+async function loadLicences() {
+  const lics = await api("/api/licenses");
+  el("lic-table").innerHTML = `<tr><th>Licence</th><th>Holder</th><th>Scope</th><th>Categories</th><th>Expires</th><th></th></tr>` +
+    (lics.length ? lics.map((l) => `<tr data-id="${esc(l.id)}"><td>${esc(l.license_number)}<div class="small muted">${esc(l.issuing_authority)} · ${esc(l.country)}</div></td>
+      <td>${esc(l.holder_name)}<div class="small muted">${esc((l.license_types || []).join(", "))}</div></td>
+      <td>${esc((l.regions || []).join(", ") || "issuing country only")}<div class="small muted">${(l.coverage_countries || []).length} countries</div></td>
+      <td>${esc((l.product_categories || []).join(", "))}</td>
+      <td class="${l.days_to_expiry < 0 ? "stop-text" : l.days_to_expiry < 45 ? "warn-text" : ""}">${esc(l.expires_on)}<div class="small muted">${l.days_to_expiry} days</div></td>
+      <td><button>Deactivate</button></td></tr>`).join("") : `<tr><td class="empty" colspan="6">No licences registered. Medical and pharmaceutical outreach goes to review until one is.</td></tr>`);
+  el("lic-table").querySelectorAll("button").forEach((btn) => btn.onclick = () => {
+    if (confirm("Stop relying on this licence?")) act(() => api(`/api/licenses/${btn.closest("tr").dataset.id}/deactivate`, { method: "POST" }), "Licence deactivated").then(loadLicences);
+  });
+}
+el("lic-add").onclick = () => act(() => api("/api/licenses", { method: "POST", body: JSON.stringify({
+  holder_name: el("lic-holder").value, country: el("lic-country").value, issuing_authority: el("lic-authority").value,
+  license_number: el("lic-number").value, license_types: csvList(el("lic-types").value), product_categories: csvList(el("lic-cats").value),
+  regions: csvList(el("lic-regions").value), valid_from: el("lic-from").value || null, expires_on: el("lic-expires").value }) }), "Licence registered").then(loadLicences);
+
+// ------------------------------------------------------------------ settings
+async function loadSettings() { el("commercial").value = JSON.stringify(await api("/api/settings/commercial"), null, 2); }
+el("save-commercial").onclick = () => {
+  let parsed; try { parsed = JSON.parse(el("commercial").value); } catch (e) { return toast("That is not valid JSON: " + e.message); }
+  act(() => api("/api/settings/commercial", { method: "PUT", body: JSON.stringify(parsed) }), "Settings saved").then(loadSettings);
+};
+el("save-pauses").onclick = () => act(() => api("/api/control", { method: "POST", body: JSON.stringify({
+  paused_categories: csvList(el("paused-cats").value), paused_geographies: csvList(el("paused-geos").value) }) }), "Pauses saved");
+
+// ------------------------------------------------------------------ refresh loop
+async function loadTab() {
+  try {
+    if (activeTab === "reviews") await loadReviews();
+    else if (activeTab === "pipeline") await loadPipeline();
+    else if (activeTab === "catalogue") await loadCatalogue();
+    else if (activeTab === "licences") await loadLicences();
+    else if (activeTab === "settings" && !el("commercial").value) await loadSettings();
+  } catch (e) { toast("Could not load: " + e.message); }
+}
+async function refresh() {
+  try { state = await api("/api/state"); renderOverview(state); }
+  catch (e) { toast("State unavailable: " + e.message); }
+}
+showTab(["overview", "reviews", "pipeline", "catalogue", "licences", "settings", "system"].includes(activeTab) ? activeTab : "overview");
 refresh();
-setInterval(refresh, 15000);
+setInterval(refresh, 20000);
 </script>
 </body>
 </html>
