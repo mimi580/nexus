@@ -124,7 +124,7 @@ def test_category_limited_licence(session):
     on = date(2026, 9, 17)
     assert coverage(session, "Kenya", MEDICAL, on).covered
     result = coverage(session, "Kenya", PHARMA, on)
-    assert not result.covered and "do not cover" in result.reason
+    assert not result.covered and "do not include" in result.reason
 
 
 def test_deactivated_licence_no_longer_covers(session):
@@ -133,7 +133,68 @@ def test_deactivated_licence_no_longer_covers(session):
     assert not coverage(session, "Kenya", PHARMA, date(2026, 9, 17)).covered
 
 
+def test_regional_scope_covers_member_states_as_cross_border(session):
+    _license(session, regions=["eac", "COMESA"])
+    on = date(2026, 9, 17)
+    home = coverage(session, "Kenya", PHARMA, on)
+    assert home.covered and not home.cross_border
+    uganda = coverage(session, "Uganda", PHARMA, on)  # EAC and COMESA
+    assert uganda.covered and uganda.cross_border
+    assert coverage(session, "Egypt", MEDICAL, on).covered  # COMESA only
+    assert coverage(session, "Tanzania", MEDICAL, on).covered  # EAC only
+    assert coverage(session, "DRC", MEDICAL, on).covered  # alias
+    assert not coverage(session, "Ghana", MEDICAL, on).covered
+    assert not coverage(session, "Nigeria", PHARMA, on).covered
+
+
+def test_named_countries_extend_scope(session):
+    _license(session, coverage_countries=["Malawi"])
+    on = date(2026, 9, 17)
+    assert coverage(session, "Malawi", PHARMA, on).cross_border
+    assert not coverage(session, "Zambia", PHARMA, on).covered
+
+
+def test_unknown_region_is_rejected(session):
+    with pytest.raises(LicenseError, match="unknown regions"):
+        _license(session, regions=["ECOWAS-ish"])
+
+
+def test_home_country_licence_is_preferred_over_regional_scope(session):
+    _license(session, regions=["EAC"])
+    _license(
+        session, country="Uganda", license_number="NDA-TEST-9", issuing_authority="National Drug Authority",
+        product_categories=[PHARMA],
+    )
+    result = coverage(session, "Uganda", PHARMA, date(2026, 9, 17))
+    assert result.covered and not result.cross_border
+    assert result.license.license_number == "NDA-TEST-9"
+
+
 # ------------------------------------------------------------------ policy
+
+
+def test_cross_border_outreach_is_allowed(ctx):
+    _license(ctx.session, regions=["EAC", "COMESA"])
+    result = ctx.policy.evaluate(_regulated_request(ctx, country="Uganda"), now=ctx.now)
+    assert result.decision == Decision.ALLOW, result.reasons
+
+
+def test_cross_border_commitment_escalates_with_destination_checks(ctx):
+    _license(ctx.session, regions=["EAC", "COMESA"])
+    result = ctx.policy.evaluate(
+        _regulated_request(ctx, kind=ActionKind.FINANCIAL_COMMITMENT, country="Uganda"), now=ctx.now
+    )
+    assert result.decision == Decision.ESCALATE
+    assert "R-REG-06" in result.rule_ids
+    assert any("import authorisation in Uganda" in reason for reason in result.reasons)
+
+
+def test_domestic_commitment_has_no_cross_border_check(ctx):
+    _license(ctx.session, regions=["EAC"])
+    result = ctx.policy.evaluate(
+        _regulated_request(ctx, kind=ActionKind.FINANCIAL_COMMITMENT), now=ctx.now
+    )
+    assert "R-REG-06" not in result.rule_ids
 
 
 def test_regulated_outreach_inside_coverage_is_allowed(ctx):
@@ -219,6 +280,16 @@ def test_licensed_market_outreach_sends_and_states_the_licence(ctx):
     assert "licensed importer and distributor in Kenya" in message.body
 
 
+def test_cross_border_copy_names_the_issuing_country_only(ctx):
+    _license(ctx.session, regions=["EAC", "COMESA"])
+    opportunity = _pharma_opportunity(ctx, "Uganda")
+    result = OutreachAgent().run(ctx, {"opportunity_id": opportunity.id, "regulatory_checked": True})
+    assert result.output.get("sent") is True, result.output
+    body = ctx.session.scalar(select(Message).where(Message.direction == "outbound")).body
+    assert "licensed importer and distributor in Kenya" in body
+    assert "in Uganda" not in body
+
+
 def test_unlicensed_market_outreach_goes_to_review(ctx):
     _license(ctx.session)
     opportunity = _pharma_opportunity(ctx, "Nigeria")
@@ -284,9 +355,11 @@ def test_licence_api_round_trip(client):
         "license_types": ["importer", "distributor"],
         "product_categories": [MEDICAL, PHARMA],
         "expires_on": "2030-12-31",
+        "regions": ["EAC"],
     }
     created = client.post("/api/licenses", json=payload)
     assert created.status_code == 201, created.text
+    assert "Tanzania" in created.json()["coverage_countries"]
     lic_id = created.json()["id"]
     listed = client.get("/api/licenses").json()
     assert [row["id"] for row in listed] == [lic_id]
@@ -315,11 +388,13 @@ def test_licence_cli(tmp_path, capsys, monkeypatch):
             "--holder", "Leonard Medical Supplies Ltd", "--country", "Kenya",
             "--authority", "Pharmacy and Poisons Board", "--number", "PPB-CLI-001",
             "--types", "importer", "distributor", "--categories", MEDICAL, PHARMA,
-            "--expires", "2030-12-31",
+            "--expires", "2030-12-31", "--regions", "EAC", "COMESA",
         ])
         assert code == 0
         added = json.loads(capsys.readouterr().out)
         assert added["country"] == "Kenya"
+        assert added["regions"] == ["COMESA", "EAC"]
+        assert "Uganda" in added["coverage_countries"] and "Egypt" in added["coverage_countries"]
 
         assert main(["--database-url", url, "license", "list"]) == 0
         listed = json.loads(capsys.readouterr().out)

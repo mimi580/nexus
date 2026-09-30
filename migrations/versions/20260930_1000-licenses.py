@@ -20,6 +20,8 @@ def upgrade() -> None:
     sa.Column('holder_name', sa.String(length=200), nullable=False),
     sa.Column('license_types', sa.JSON(), nullable=False),
     sa.Column('country', sa.String(length=80), nullable=False),
+    sa.Column('regions', sa.JSON(), nullable=False),
+    sa.Column('coverage_countries', sa.JSON(), nullable=False),
     sa.Column('issuing_authority', sa.String(length=200), nullable=False),
     sa.Column('license_number', sa.String(length=120), nullable=False),
     sa.Column('product_categories', sa.JSON(), nullable=False),

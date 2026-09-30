@@ -94,7 +94,8 @@ def rule_license(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
     """Regulated trade only where an active licence covers the country and category.
 
     Outreach outside licence coverage escalates (a partner route may exist);
-    a commitment outside coverage is blocked outright.
+    a commitment outside coverage is blocked outright. A cross-border
+    commitment inside coverage escalates with the destination-country checks.
     """
     category = req.payload.get("product_category")
     if category not in {c.value for c in REGULATED_CATEGORIES}:
@@ -104,6 +105,13 @@ def rule_license(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
     if req.kind not in contact_kinds + commitment_kinds:
         return None
     result = coverage(ctx.session, req.payload.get("country"), category, ctx.now.date())
+    if result.covered and result.cross_border and req.kind in commitment_kinds:
+        return _escalate(
+            "R-REG-06",
+            f"cross-border regulated commitment ({result.reason}): confirm the buyer holds import "
+            f"authorisation in {req.payload.get('country')} and the product is registered with that "
+            "country's regulator; your licence does not authorise import there",
+        )
     if result.covered:
         return None
     if req.kind in commitment_kinds:

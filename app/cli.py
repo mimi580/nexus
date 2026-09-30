@@ -88,6 +88,8 @@ def cmd_license(args: argparse.Namespace) -> int:
                     scope_notes=args.notes,
                     document_ref=args.document,
                     verification=args.verification,
+                    regions=args.regions,
+                    coverage_countries=args.covers,
                 )
                 DbAuditLogger(session).record(
                     "license_added", summary=f"{lic.country} licence {lic.license_number}",
@@ -144,6 +146,10 @@ def main(argv: list[str] | None = None) -> int:
     lic_add.add_argument("--categories", nargs="+", required=True, help="medical_equipment pharmaceutical ...")
     lic_add.add_argument("--expires", required=True, help="YYYY-MM-DD")
     lic_add.add_argument("--valid-from", default=None, help="YYYY-MM-DD")
+    lic_add.add_argument(
+        "--regions", nargs="*", default=[], help="declared regional trading scope, e.g. EAC COMESA"
+    )
+    lic_add.add_argument("--covers", nargs="*", default=[], help="extra countries in the declared scope")
     lic_add.add_argument("--notes", default="", help="scope limits written on the licence")
     lic_add.add_argument("--document", default=None, help="where the licence copy is kept")
     lic_add.add_argument(

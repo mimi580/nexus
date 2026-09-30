@@ -111,7 +111,9 @@ allow / block / escalate, with block winning over escalate:
   contacting a medical/pharma buyer, controlled/restricted products
 - licence coverage: medical/pharma contact outside an active licence for the
   buyer's country and category escalates; a commitment outside coverage is
-  blocked (`app/policies/licenses.py`, `licenses` table)
+  blocked; a cross-border commitment inside a regional scope (EAC/COMESA)
+  escalates with destination import and product-registration checks
+  (`app/policies/licenses.py`, `licenses` table)
 - communication: opt-out, bounce, missing address, company-level opt-out
 - duplicate outbound message
 - daily and per-contact rate limits

@@ -340,8 +340,10 @@ class ComplianceEvent(Base, TimestampMixin):
 class License(Base, TimestampMixin):
     """A trading licence held by the operator (importer, distributor, wholesaler).
 
-    Regulated outreach and transactions are only permitted in a country and
-    product category an active, unexpired licence covers.
+    `country` is where it was issued; `coverage_countries` is the declared
+    trading scope (issuing country plus any regional bloc or named countries).
+    Regulated outreach needs an active licence whose scope covers the buyer's
+    country; cross-border commitments also need destination authorisation.
     """
 
     __tablename__ = "licenses"
@@ -350,6 +352,8 @@ class License(Base, TimestampMixin):
     holder_name: Mapped[str] = mapped_column(String(200))
     license_types: Mapped[list[Any]] = mapped_column(JSON, default=list)
     country: Mapped[str] = mapped_column(String(80), index=True)
+    regions: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    coverage_countries: Mapped[list[Any]] = mapped_column(JSON, default=list)
     issuing_authority: Mapped[str] = mapped_column(String(200))
     license_number: Mapped[str] = mapped_column(String(120))
     product_categories: Mapped[list[Any]] = mapped_column(JSON, default=list)

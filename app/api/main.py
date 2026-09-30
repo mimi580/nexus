@@ -64,6 +64,8 @@ class LicenseIn(BaseModel):
     scope_notes: str = ""
     document_ref: str | None = None
     verification: str = "user_provided"
+    regions: list[str] = Field(default_factory=list)
+    coverage_countries: list[str] = Field(default_factory=list)
 
 
 class ControlIn(BaseModel):

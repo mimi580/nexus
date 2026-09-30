@@ -72,6 +72,7 @@ python -m app.cli license add \
   --authority "Pharmacy and Poisons Board" --number "PPB/XXXX/2026" \
   --types importer distributor \
   --categories medical_equipment pharmaceutical \
+  --regions EAC COMESA \
   --valid-from 2026-01-01 --expires 2027-12-31 \
   --document "where the licence copy is stored"
 python -m app.cli license list
@@ -80,14 +81,21 @@ python -m app.cli license deactivate <licence id>
 
 How NEXUS uses it:
 
-- Outreach to a medical/pharma buyer goes out only when an active, unexpired
-  licence covers that buyer's country and category. Otherwise it escalates for
-  your review (rule R-REG-04); you may have a partner route.
+- `--regions` (EAC, COMESA) and `--covers <country>...` declare where you trade
+  from the issuing country. Outreach to a medical/pharma buyer goes out only
+  when an active, unexpired licence's scope covers that buyer's country and
+  category. Otherwise it escalates for your review (rule R-REG-04).
+- A licence never authorises import into another country. For a buyer outside
+  the issuing country, outreach is allowed but any commitment escalates
+  (R-REG-06) until you confirm the buyer's own import authorisation there and the
+  product's registration with that country's regulator (e.g. TMDA, NDA,
+  Rwanda FDA). Registering a licence issued in that country removes the check.
 - A regulated financial or legal commitment outside licence coverage is blocked
   (R-REG-05). Inside coverage it still goes to you — a licence never makes a
   regulated transaction autonomous.
-- Emails may say "licensed importer and distributor in <country>" only when the
-  register covers that deal; the fact check blocks licence claims otherwise.
+- Emails may say "licensed importer and distributor in <issuing country>" only
+  when the register covers that deal — never "licensed in" the buyer's country
+  unless a licence was issued there. The fact check blocks licence claims otherwise.
 - A daily job raises a compliance alert 45 days before expiry and again at expiry.
 
 The same operations are available over the API (`GET/POST /api/licenses`,

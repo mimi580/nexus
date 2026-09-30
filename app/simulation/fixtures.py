@@ -32,6 +32,7 @@ COMPANIES = [
     dict(name="Tuskys Pharma Distributors", domain="tuskyspharma.co.ke", country="Kenya", city="Nairobi", segment="pharmaceutical distributor", size_indicator="45 staff", category=ProductCategory.PHARMA.value, signals=["expanding cold chain capacity"]),
     dict(name="Accra Diagnostics Group", domain="accradiagnostics.com.gh", country="Ghana", city="Accra", segment="diagnostic chain", size_indicator="8 branches", category=ProductCategory.MEDICAL.value, signals=["opening two new labs"]),
     dict(name="Lagos Teaching Hospital Trust", domain="lthtrust.ng", country="Nigeria", city="Lagos", segment="teaching hospital", size_indicator="700 beds", category=ProductCategory.MEDICAL.value, signals=["capital equipment budget approved"]),
+    dict(name="Kigali Specialist Clinic", domain="kigalispecialist.rw", country="Rwanda", city="Kigali", segment="private specialist hospital", size_indicator="80 beds", category=ProductCategory.MEDICAL.value, signals=["expanding diagnostic imaging unit"]),
     dict(name="Kigali Innovation Academy", domain="kigaliacademy.rw", country="Rwanda", city="Kigali", segment="private school", size_indicator="900 students", category=ProductCategory.LAPTOP.value, signals=["1:1 laptop programme announced"]),
     dict(name="Dar Business College", domain="darbusinesscollege.ac.tz", country="Tanzania", city="Dar es Salaam", segment="tertiary college", size_indicator="2400 students", category=ProductCategory.LAPTOP.value, signals=["computer lab refresh tender"]),
     dict(name="Nairobi Fintech Labs", domain="nairobifintechlabs.io", country="Kenya", city="Nairobi", segment="technology company", size_indicator="180 staff", category=ProductCategory.LAPTOP.value, signals=["hiring 40 engineers"]),
@@ -61,8 +62,9 @@ SUPPLIERS = [
     dict(name="Nairobi Trade Partners Ltd", country="Kenya", categories=[ProductCategory.LAPTOP.value, ProductCategory.IPHONE.value], reliability=0.62, lead_time_days=7, payment_terms="net 15", documents=["invoice"]),
 ]
 
-# A fictional licence so simulated runs exercise both licensed (Kenya) and
-# unlicensed (Ghana, Nigeria) regulated markets. Never used outside simulation.
+# A fictional licence so simulated runs exercise domestic (Kenya), cross-border
+# in-scope (Rwanda, Egypt) and out-of-scope (Ghana, Nigeria) regulated markets.
+# Never used outside simulation.
 LICENSES = [
     dict(
         holder_name="Simulated Operator Ltd",
@@ -71,6 +73,7 @@ LICENSES = [
         license_number="SIM-KE-0001",
         license_types=["importer", "distributor"],
         product_categories=[ProductCategory.MEDICAL.value, ProductCategory.PHARMA.value],
+        regions=["EAC", "COMESA"],
         valid_from="2026-01-01",
         expires_on="2027-12-31",
         scope_notes="simulation fixture",
