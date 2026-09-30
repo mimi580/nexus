@@ -155,6 +155,8 @@ def run_simulation(
         report["ads"] = {
             "campaigns": {status: n for status, n in session.execute(
                 select(AdCampaign.status, func.count()).group_by(AdCampaign.status)).all()},
+            "by_platform": {platform: n for platform, n in session.execute(
+                select(AdCampaign.platform, func.count()).group_by(AdCampaign.platform)).all()},
             "landing_pages": session.scalar(select(func.count()).select_from(LandingPage)),
             "leads": {platform: n for platform, n in session.execute(
                 select(Lead.platform, func.count()).where(Lead.status != "spam").group_by(Lead.platform)).all()},

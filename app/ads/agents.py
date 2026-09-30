@@ -162,6 +162,7 @@ class AdPlannerAgent(BaseAgent):
             select(AdCampaign).where(AdCampaign.status.in_(LIVE_STATUSES))))
         free = pool - committed_daily
         created, total_cost = [], 0.0
+        queues: dict[str, list[CountArm]] = {}
         for platform in platforms:
             live = {(c.product_category, (c.countries or [""])[0]) for c in ctx.session.scalars(
                 select(AdCampaign).where(AdCampaign.platform == platform, AdCampaign.status.in_(LIVE_STATUSES)))}
@@ -176,12 +177,19 @@ class AdPlannerAgent(BaseAgent):
                     if (category, arm.key) not in live:
                         arms.append(CountArm(f"{category}|{arm.key}", arm.events, arm.exposure, arm.prior_shape, arm.prior_rate))
             rng = signals.rng_for("markets", platform, today.isoformat())
-            ranked = sorted(arms, key=lambda a: a.sample(rng), reverse=True)
-            for arm in ranked[:slots]:
+            queues[platform] = sorted(arms, key=lambda a: a.sample(rng), reverse=True)[:slots]
+        # Take turns between platforms so one cannot use up the budget before the other starts.
+        out_of_budget = False
+        while any(queues.values()) and not out_of_budget:
+            for platform in list(queues):
+                if not queues[platform]:
+                    continue
                 budget = min(ctx.settings.ads_default_daily_budget_usd, free)
                 if budget < ctx.settings.ads_min_daily_budget_usd:
                     notes.append("no room in the ads budget for another campaign this month")
+                    out_of_budget = True
                     break
+                arm = queues[platform].pop(0)
                 category, country = arm.key.split("|", 1)
                 campaign, cost, why = self._plan_one(ctx, platform, category, country, round(budget, 2), arm)
                 total_cost += cost

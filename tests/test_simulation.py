@@ -58,6 +58,7 @@ def test_ads_run_in_the_simulated_world(report):
     ads = report["ads"]
     assert ads["landing_pages"] > 0
     assert ads["campaigns"].get("active", 0) > 0
+    assert set(ads["by_platform"]) == {"google", "meta"}  # both platforms get a share of the budget
     assert sum(n for platform, n in ads["leads"].items() if platform in ("google", "meta")) > 0
     assert report["budget"]["categories"]["ads"]["used"] > 0
     assert report["budget"]["categories"]["ads"]["used"] <= report["budget"]["categories"]["ads"]["limit"]

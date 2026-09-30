@@ -151,6 +151,13 @@ def test_planner_builds_campaigns_with_pages_and_never_pharma(adctx):
     assert {t["agent"] for t in result.next_tasks} == {"ad_launch"}
 
 
+def test_platforms_take_turns_when_budget_is_tight(adctx):
+    adctx.settings = adctx.settings.model_copy(update={"ads_default_daily_budget_usd": 8.0})
+    run_task(adctx, AdPlannerAgent(), {})
+    platforms = [c.platform for c in adctx.session.scalars(select(AdCampaign).order_by(AdCampaign.created_at))]
+    assert platforms[:2] == ["google", "meta"] and "meta" in platforms
+
+
 def test_launch_waits_for_approval_then_goes_live(adctx):
     ids = plan_and_launch(adctx, platform="google", country="Kenya")
     campaign = adctx.session.get(AdCampaign, ids[0])
