@@ -15,6 +15,7 @@ import argparse
 import logging
 import os
 import signal
+import tempfile
 import time
 
 from sqlalchemy import select
@@ -28,7 +29,8 @@ from app.scheduler.scheduler import Scheduler
 
 logger = get_logger("nexus.worker")
 _running = True
-HEARTBEAT = Path(os.environ.get("NEXUS_HEARTBEAT_FILE", "/tmp/nexus-worker-heartbeat"))
+# The system temp folder (/tmp on Linux, %TEMP% on Windows).
+HEARTBEAT = Path(os.environ.get("NEXUS_HEARTBEAT_FILE", Path(tempfile.gettempdir()) / "nexus-worker-heartbeat"))
 
 
 def check_heartbeat(interval: int) -> int:
@@ -81,6 +83,7 @@ def main() -> int:
         try:
             summary = cycle()
             log_event(logger, logging.INFO, "worker_cycle", **summary)
+            HEARTBEAT.parent.mkdir(parents=True, exist_ok=True)
             HEARTBEAT.touch()
         except Exception as exc:  # a bad cycle never kills the worker
             log_event(logger, logging.ERROR, "worker_cycle_failed", error=str(exc))
