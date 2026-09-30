@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from sqlalchemy import select
+
 from app.agents.base import BaseAgent
 from app.core.context import RunContext
 from app.core.ids import stable_key
@@ -90,6 +92,22 @@ class OutreachAgent(BaseAgent):
         step: int,
         fact_check: dict,
     ) -> Message:
+        from app.execution.email import compliance_footer, new_message_id, unsubscribe_url
+
+        settings = ctx.settings
+        link = unsubscribe_url(settings, contact.id)
+        if settings.business_name or settings.nexus_mode == "production":
+            body = body.rstrip() + compliance_footer(settings, link)
+        message_id = new_message_id(settings)
+        previous = ctx.session.scalar(
+            select(Message)
+            .where(
+                Message.opportunity_id == opportunity.id, Message.contact_id == contact.id,
+                Message.direction == "outbound", Message.status == "sent",
+                Message.provider_message_id.is_not(None),
+            )
+            .order_by(Message.sent_at.desc())
+        )
         message = Message(
             opportunity_id=opportunity.id,
             contact_id=contact.id,
@@ -109,7 +127,14 @@ class OutreachAgent(BaseAgent):
             to=contact.email or "",
             subject=subject,
             body=body,
-            context={"product_category": opportunity.product_category, "step": step},
+            context={
+                "product_category": opportunity.product_category,
+                "step": step,
+                "contact_id": contact.id,
+                "message_id": message_id,
+                "unsubscribe_url": link,
+                "in_reply_to": previous.provider_message_id if previous else None,
+            },
         )
         message.provider = result.provider
         message.simulated = result.simulated
@@ -117,6 +142,12 @@ class OutreachAgent(BaseAgent):
             message.status = "failed"
             message.error = result.error
             ctx.budget.release(reservation)
+            if result.permanent_failure:
+                contact.bounced = True
+                ctx.audit.record(
+                    "hard_bounce", summary=f"{contact.email} refused by the receiving server",
+                    decision="block", task_id=ctx.task_id, contact_id=contact.id,
+                )
             return message
 
         ctx.budget.commit(reservation, max(result.cost_usd, SEND_COST_USD))

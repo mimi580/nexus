@@ -12,7 +12,12 @@ def main(path: str) -> int:
     except (OSError, ET.ParseError) as exc:
         print(f"::error title=junit::could not read {path}: {exc}")
         return 0
-    for case in root.iter("testcase"):
+    cases = list(root.iter("testcase"))
+    failed = sum(1 for c in cases if c.find("failure") is not None or c.find("error") is not None)
+    skipped = sum(1 for c in cases if c.find("skipped") is not None)
+    files = sorted({(c.get("classname") or "").split(".")[1] if "." in (c.get("classname") or "") else "" for c in cases})
+    print(f"::notice title=pytest summary::{len(cases)} tests, {failed} failed, {skipped} skipped across {len(files)} files: {' '.join(files)}")
+    for case in cases:
         for tag in ("failure", "error"):
             node = case.find(tag)
             if node is None:

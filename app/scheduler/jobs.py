@@ -29,6 +29,9 @@ def refresh_market_research(ctx: RunContext) -> dict:
 
 
 def process_inbound(ctx: RunContext) -> dict:
+    from app.execution.inbound import poll
+
+    polled = poll(ctx)
     created = 0
     rows = ctx.session.scalars(
         select(Message).where(Message.direction == "inbound", Message.status == "received")
@@ -42,7 +45,7 @@ def process_inbound(ctx: RunContext) -> dict:
             idempotency_key=stable_key("response", message.id),
         )
         created += int(new)
-    return {"tasks_created": created}
+    return {"tasks_created": created, **polled}
 
 
 def due_follow_ups(ctx: RunContext) -> dict:
