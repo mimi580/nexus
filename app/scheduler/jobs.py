@@ -149,6 +149,54 @@ def license_expiry_check(ctx: RunContext) -> dict:
     return {"raised": raised}
 
 
+def catalogue_recheck(ctx: RunContext) -> dict:
+    """Resume opportunities parked for a missing offer or price once it exists."""
+    from app.agents.sourcing import AWAITING_OFFER, AWAITING_PRICE
+    from app.commercial import catalogue
+    from app.database.models import Company, ReviewItem
+
+    today = ctx.now.date()
+    resumed = 0
+    closed_gaps: set[str] = set()
+    parked = ctx.session.scalars(
+        select(Opportunity).where(
+            Opportunity.stage == OpportunityStage.COMMERCIAL_REVIEW.value,
+            Opportunity.blocked_reason.in_((AWAITING_OFFER, AWAITING_PRICE)),
+        )
+    )
+    for opportunity in parked:
+        category = opportunity.product_category
+        company = ctx.session.get(Company, opportunity.company_id)
+        country = company.country if company else None
+        if opportunity.blocked_reason == AWAITING_OFFER:
+            if not catalogue.current_offers(ctx.session, category, today):
+                continue
+            closed_gaps.add(stable_key("catalogue_gap", "offer", category))
+        else:
+            if catalogue.price_reference(ctx.session, category, country, today) is None:
+                continue
+            closed_gaps.add(stable_key("catalogue_gap", "price", category, country or ""))
+        _, new = ctx.tasks.create_task(
+            agent="sourcing",
+            objective_id=opportunity.objective_id,
+            task_input={"opportunity_id": opportunity.id},
+            priority=60,
+            idempotency_key=stable_key("catalogue_recheck", opportunity.id, today.isoformat()),
+        )
+        resumed += int(new)
+    for key in closed_gaps:
+        item = ctx.session.scalar(
+            select(ReviewItem).where(ReviewItem.review_key == key, ReviewItem.status == "pending")
+        )
+        if item is not None:
+            item.status = "resolved"
+            item.decided_at = ctx.now
+            item.decided_by = "system"
+            item.decision_note = "catalogue gap filled; parked opportunities resumed"
+    ctx.session.flush()
+    return {"resumed": resumed, "gaps_closed": len(closed_gaps)}
+
+
 DEFAULT_JOBS = {
     "market_research_refresh": (refresh_market_research, 7 * 24 * 3600),
     "process_inbound": (process_inbound, 900),
@@ -158,4 +206,5 @@ DEFAULT_JOBS = {
     "weekly_learning": (weekly_learning, 7 * 24 * 3600),
     "monthly_budget_review": (monthly_budget_review, 30 * 24 * 3600),
     "license_expiry_check": (license_expiry_check, 24 * 3600),
+    "catalogue_recheck": (catalogue_recheck, 6 * 3600),
 }

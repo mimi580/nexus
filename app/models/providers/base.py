@@ -22,6 +22,18 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def render_user_message(request: ModelRequest) -> str:
+    """The instruction plus the structured context the model must work from.
+
+    Live providers send this as the user turn, so the model sees exactly the
+    facts the agent supplied and nothing it was not given.
+    """
+    if not request.context:
+        return request.prompt
+    context = json.dumps(request.context, default=str, ensure_ascii=False, indent=1)
+    return f"{request.prompt}\n\nContext (JSON; the only facts you may use):\n{context}"
+
+
 def price(tier: ModelTier, input_tokens: int, output_tokens: int) -> float:
     rate_in, rate_out = TIER_RATES[tier]
     return round((input_tokens * rate_in + output_tokens * rate_out) / 1_000_000, 8)
@@ -55,7 +67,7 @@ class BaseProvider:
         return tier in self.supported_tiers
 
     def estimate_cost(self, request: ModelRequest) -> float:
-        in_tokens = estimate_tokens(request.prompt) + estimate_tokens(request.system or "")
+        in_tokens = estimate_tokens(render_user_message(request)) + estimate_tokens(request.system or "")
         return price(request.tier, in_tokens, request.max_output_tokens)
 
     def complete(self, request: ModelRequest) -> ModelResponse:  # pragma: no cover - abstract

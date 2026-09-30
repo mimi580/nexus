@@ -14,7 +14,7 @@ from app.core.config import Settings
 from app.core.errors import ProviderError, ProviderUnavailable
 from app.core.interfaces import ModelRequest, ModelResponse
 from app.core.types import ModelTier
-from app.models.providers.base import BaseProvider, price
+from app.models.providers.base import BaseProvider, price, render_user_message
 
 API_URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"
@@ -28,9 +28,9 @@ class AnthropicProvider(BaseProvider):
             raise ProviderError("ANTHROPIC_API_KEY is not configured")
         self._api_key = settings.anthropic_api_key
         self.models = models or {
-            ModelTier.REASONING: settings.model_primary or "claude-sonnet-4-6",
-            ModelTier.BULK: settings.model_bulk or "claude-haiku-4-5",
-            ModelTier.CRITIC: settings.model_critic or "claude-haiku-4-5",
+            ModelTier.REASONING: settings.model_primary or "claude-sonnet-5-5",
+            ModelTier.BULK: settings.model_bulk or "claude-haiku-4-5-20251001",
+            ModelTier.CRITIC: settings.model_critic or "claude-haiku-4-5-20251001",
         }
         self.timeout = timeout
 
@@ -39,7 +39,7 @@ class AnthropicProvider(BaseProvider):
         payload = {
             "model": model,
             "max_tokens": request.max_output_tokens,
-            "messages": [{"role": "user", "content": request.prompt}],
+            "messages": [{"role": "user", "content": render_user_message(request)}],
         }
         if request.system:
             payload["system"] = request.system

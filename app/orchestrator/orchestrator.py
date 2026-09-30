@@ -143,6 +143,16 @@ class Orchestrator:
 
     def run(self, objective_id: str | None = None, limits: LoopLimits | None = None) -> dict:
         controller = LoopController(limits or self.limits)
+        settings = self.ctx.settings
+        if settings.nexus_mode == "production" and not settings.production_ready:
+            missing = settings.readiness()["missing"]
+            self.ctx.audit.record(
+                "not_production_ready",
+                summary="production run refused: " + "; ".join(missing),
+                decision="block",
+            )
+            controller.stop("not_production_ready")
+            return {**controller.summary(), "missing": missing}
         self.recover()
         while controller.should_continue():
             if self.ctx.budget.hard_stopped():

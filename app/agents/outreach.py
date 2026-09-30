@@ -14,7 +14,7 @@ from app.core.ids import stable_key
 from app.core.interfaces import ActionRequest, AgentResult
 from app.core.types import ActionKind, Decision, ModelTier, OpportunityStage, REGULATED_CATEGORIES, utcnow
 from app.policies.licenses import coverage
-from app.database.models import Company, Contact, FollowUp, Message, Interaction, Opportunity
+from app.database.models import Company, Contact, FollowUp, Message, Interaction, Opportunity, ReviewItem
 
 SEND_COST_USD = 0.01  # per message, charged to the email category
 
@@ -167,7 +167,18 @@ class OutreachAgent(BaseAgent):
             return self.fail("company or contact missing")
 
         step = int(task_input.get("step", self.step))
-        copy, cost = self._compose(ctx, opportunity, company, contact, step)
+        approved_review_id = task_input.get("approved_review_id")
+        approved = ctx.session.get(ReviewItem, approved_review_id) if approved_review_id else None
+        if approved is not None and (approved.action_payload or {}).get("body"):
+            # Send exactly the draft the operator read and approved.
+            copy = {
+                "subject": approved.action_payload.get("subject", ""),
+                "body": approved.action_payload["body"],
+                "personalized": True,
+            }
+            cost = 0.0
+        else:
+            copy, cost = self._compose(ctx, opportunity, company, contact, step)
         quantity = (opportunity.economics or {}).get("quantity")
         dedupe_key = stable_key(contact.id, opportunity.id, "outreach", step)
 
@@ -178,8 +189,10 @@ class OutreachAgent(BaseAgent):
                 "contact_id": contact.id,
                 "company_id": company.id,
                 "opportunity_id": opportunity.id,
+                "to": contact.email,
                 "product_category": opportunity.product_category,
                 "country": company.country,
+                "approved_review_id": approved_review_id,
                 "subject": copy.get("subject", ""),
                 "body": copy.get("body", ""),
                 "personalized": bool(copy.get("personalized", True)),
@@ -262,6 +275,7 @@ class FollowUpAgent(OutreachAgent):
                 "opportunity_id": opportunity.id,
                 "step": step,
                 "regulatory_checked": task_input.get("regulatory_checked", False),
+                "approved_review_id": task_input.get("approved_review_id"),
             },
         )
         if follow_up is not None:

@@ -150,6 +150,52 @@ class Supplier(Base, TimestampMixin):
     last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class SupplierOffer(Base, TimestampMixin):
+    """A real offer from a supplier: what they will sell, at what cost, on what terms.
+
+    Entered by the operator from actual quotes, price lists or supplier emails.
+    In production this catalogue is the only source of acquisition costs.
+    """
+
+    __tablename__ = "supplier_offers"
+    id: Mapped[str] = _pk("off")
+    supplier_id: Mapped[str] = mapped_column(ForeignKey("suppliers.id"), index=True)
+    product_category: Mapped[str] = mapped_column(String(50), index=True)
+    product_name: Mapped[str] = mapped_column(String(300))
+    condition: Mapped[str | None] = mapped_column(String(80))
+    quantity_available: Mapped[int | None] = mapped_column(Integer)
+    moq: Mapped[int | None] = mapped_column(Integer)
+    unit_cost_low_usd: Mapped[float] = mapped_column(Float)
+    unit_cost_high_usd: Mapped[float] = mapped_column(Float)
+    incoterm: Mapped[str | None] = mapped_column(String(60))
+    shipping_cost_usd: Mapped[float | None] = mapped_column(Float)
+    lead_time_days: Mapped[int | None] = mapped_column(Integer)
+    payment_terms: Mapped[str | None] = mapped_column(String(200))
+    documents: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    warranty: Mapped[str | None] = mapped_column(String(200))
+    valid_until: Mapped[date | None] = mapped_column(Date, index=True)
+    source: Mapped[str] = mapped_column(String(500))
+    notes: Mapped[str] = mapped_column(Text, default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class PriceReference(Base, TimestampMixin):
+    """What buyers pay: an evidence-backed selling-price range for a product line."""
+
+    __tablename__ = "price_references"
+    id: Mapped[str] = _pk("prc")
+    product_category: Mapped[str] = mapped_column(String(50), index=True)
+    product_name: Mapped[str | None] = mapped_column(String(300))
+    condition: Mapped[str | None] = mapped_column(String(80))
+    country: Mapped[str | None] = mapped_column(String(80), index=True)
+    unit_price_low_usd: Mapped[float] = mapped_column(Float)
+    unit_price_high_usd: Mapped[float] = mapped_column(Float)
+    basis: Mapped[str] = mapped_column(String(300))
+    source: Mapped[str] = mapped_column(String(500))
+    valid_until: Mapped[date | None] = mapped_column(Date, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
 class BuyerRequirement(Base, TimestampMixin):
     __tablename__ = "buyer_requirements"
     id: Mapped[str] = _pk("req")
@@ -224,6 +270,8 @@ class Message(Base, TimestampMixin):
     fact_check: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     error: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    thread_ref: Mapped[str | None] = mapped_column(String(300), index=True)
+    from_address: Mapped[str | None] = mapped_column(String(200))
 
     __table_args__ = (Index("ix_messages_dedupe_direction", "dedupe_key", "direction"),)
 
@@ -363,6 +411,57 @@ class License(Base, TimestampMixin):
     document_ref: Mapped[str | None] = mapped_column(String(500))
     verification: Mapped[str] = mapped_column(String(20), default="user_provided")
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class ReviewItem(Base, TimestampMixin):
+    """Something NEXUS will not do, or has stopped doing, until a human decides."""
+
+    __tablename__ = "review_items"
+    id: Mapped[str] = _pk("rev")
+    review_key: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    kind: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    event_type: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(400), default="")
+    reasons: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    rule_ids: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    opportunity_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    objective_id: Mapped[str | None] = mapped_column(String(40))
+    task_id: Mapped[str | None] = mapped_column(String(40))
+    action_kind: Mapped[str | None] = mapped_column(String(40))
+    action_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    occurrences: Mapped[int] = mapped_column(Integer, default=1)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[str | None] = mapped_column(String(80))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SourceDocument(Base, TimestampMixin):
+    """A page or search result NEXUS actually retrieved. Evidence points here."""
+
+    __tablename__ = "source_documents"
+    id: Mapped[str] = _pk("src")
+    url: Mapped[str] = mapped_column(String(1000), index=True)
+    domain: Mapped[str] = mapped_column(String(255), index=True)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    kind: Mapped[str] = mapped_column(String(20), default="page")  # page | search_result
+    query: Mapped[str | None] = mapped_column(String(500))
+    text: Mapped[str] = mapped_column(Text, default="")
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Notification(Base, TimestampMixin):
+    __tablename__ = "notifications"
+    id: Mapped[str] = _pk("ntf")
+    channel: Mapped[str] = mapped_column(String(30), index=True)
+    subject: Mapped[str] = mapped_column(String(300))
+    body: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="sent", index=True)
+    error: Mapped[str | None] = mapped_column(Text)
+    dedupe_key: Mapped[str | None] = mapped_column(String(120), index=True)
 
 
 class AuditEvent(Base, TimestampMixin):

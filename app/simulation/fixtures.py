@@ -80,6 +80,10 @@ LICENSES = [
     ),
 ]
 
+# Simulation-only duty/tax fractions. Production uses only operator-entered rates.
+SIM_DUTIES_PCT = {"Kenya": 0.16, "Nigeria": 0.2, "Ghana": 0.15, "Rwanda": 0.13, "Tanzania": 0.18,
+                  "Egypt": 0.14, "South Africa": 0.15, "Romania": 0.19, "Moldova": 0.2, "Serbia": 0.2}
+
 UNIT_ECONOMICS = {
     ProductCategory.LAPTOP.value: dict(unit_cost=(190.0, 240.0), unit_price=(320.0, 360.0), typical_qty=40),
     ProductCategory.IPHONE.value: dict(unit_cost=(240.0, 300.0), unit_price=(370.0, 430.0), typical_qty=60),

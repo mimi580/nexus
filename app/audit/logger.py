@@ -39,6 +39,8 @@ class DbAuditLogger:
         )
         self.session.add(event)
         self.session.flush()
+        if decision == "escalate":
+            self._open_review(event_type, summary, objective_id, task_id, payload)
         log_event(
             logger,
             logging.INFO,
@@ -50,3 +52,27 @@ class DbAuditLogger:
             summary=summary,
         )
         return event
+
+    def _open_review(
+        self,
+        event_type: str,
+        summary: str,
+        objective_id: str | None,
+        task_id: str | None,
+        payload: dict[str, Any],
+    ) -> None:
+        from app.review.queue import open_item
+
+        open_item(
+            self.session,
+            event_type=event_type,
+            title=summary,
+            reasons=list(payload.get("reasons") or []),
+            rule_ids=list(payload.get("rule_ids") or []),
+            review_key=payload.get("review_key"),
+            opportunity_id=payload.get("opportunity_id"),
+            objective_id=objective_id,
+            task_id=task_id,
+            action_kind=payload.get("action_kind"),
+            action_payload=payload.get("action_preview") or {},
+        )

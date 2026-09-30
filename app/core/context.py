@@ -19,6 +19,14 @@ from app.models.router import ModelRouter
 from app.policies.engine import PolicyEngine
 
 
+PREVIEW_FIELDS = ("to", "subject", "body", "country", "product_category", "step", "amount_usd", "contact_id", "company_id")
+
+
+def _preview(request: ActionRequest) -> dict[str, Any]:
+    """What the operator needs to see to decide: the exact draft, recipient, market."""
+    return {k: request.payload[k] for k in PREVIEW_FIELDS if k in request.payload}
+
+
 @dataclass
 class RunContext:
     session: Session
@@ -50,6 +58,10 @@ class RunContext:
             rule_ids=result.rule_ids,
             reasons=result.reasons,
             risk=result.risk.value,
+            review_key=request.idempotency_key,
+            action_kind=request.kind.value,
+            opportunity_id=request.opportunity_id,
+            action_preview=_preview(request) if result.decision == Decision.ESCALATE else None,
         )
         if raise_on_block and result.decision == Decision.BLOCK:
             raise PolicyViolation("; ".join(result.reasons) or "blocked", rules=result.rule_ids)

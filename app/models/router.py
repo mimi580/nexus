@@ -180,15 +180,27 @@ class ModelRouter:
 
 
 def build_default_router(session: Session, budget: BudgetController, settings: Settings | None = None) -> ModelRouter:
-    """Mock providers unless real credentials exist and mode is production."""
-    from app.models.providers.mock import MockProvider
+    """Mock providers in simulation; only real providers in production.
 
+    Production never falls back to a mock: a mock answer would be invented data.
+    If no live provider is configured, the router has no providers and every
+    model call fails loudly (and the orchestrator refuses to start).
+    """
     settings = settings or get_settings()
     router = ModelRouter(session, budget, settings)
-    if settings.nexus_mode == "production" and settings.anthropic_api_key:
-        from app.models.providers.anthropic_provider import AnthropicProvider
+    if settings.nexus_mode == "production":
+        if settings.anthropic_api_key:
+            from app.models.providers.anthropic_provider import AnthropicProvider
 
-        router.register(AnthropicProvider(settings), preference=90)
+            router.register(AnthropicProvider(settings), preference=90)
+        if settings.openai_api_key:
+            from app.models.providers.openai_compatible import OpenAICompatibleProvider
+
+            router.register(OpenAICompatibleProvider(settings), preference=80)
+        return router
+
+    from app.models.providers.mock import MockProvider
+
     router.register(MockProvider("mock-primary"), preference=50)
     router.register(MockProvider("mock-secondary", latency_ms=2.0), preference=40)
     return router

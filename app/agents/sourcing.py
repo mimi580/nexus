@@ -9,17 +9,12 @@ from app.core.interfaces import AgentResult
 from app.core.types import EvidenceKind, ModelTier, Money, OpportunityStage, ProductCategory
 from app.database.models import Company, Opportunity
 from app.economics.calculator import DealInputs, compute_economics
-from app.simulation.fixtures import UNIT_ECONOMICS
+from app.commercial import catalogue
+from app.commercial import settings as commercial
+from app.core.ids import stable_key
 
-# Documents that must be on file before a regulated line is taken to a buyer.
-REQUIRED_DOCUMENTS = {
-    ProductCategory.PHARMA.value: {"export licence", "batch certificates"},
-    ProductCategory.MEDICAL.value: {"CE documentation on file"},
-}
-
-DEFAULT_MIN_MARGIN_PCT = 12.0
-DEFAULT_DUTIES_PCT = {"Kenya": 0.16, "Nigeria": 0.2, "Ghana": 0.15, "Rwanda": 0.13, "Tanzania": 0.18,
-                      "Egypt": 0.14, "South Africa": 0.15, "Romania": 0.19, "Moldova": 0.2, "Serbia": 0.2}
+AWAITING_OFFER = "awaiting supplier offer"
+AWAITING_PRICE = "awaiting selling price reference"
 
 
 class SourcingAgent(BaseAgent):
@@ -28,6 +23,25 @@ class SourcingAgent(BaseAgent):
     tier = ModelTier.BULK
     complexity = 0.5
 
+    def _park(self, ctx: RunContext, opportunity: Opportunity, marker: str, reason: str, review_key: str) -> AgentResult:
+        """Hold an opportunity until the operator fills a catalogue gap.
+
+        One review item per gap (not per opportunity); the catalogue_recheck job
+        resumes every parked opportunity once the gap is filled.
+        """
+        opportunity.blocked_reason = marker
+        ctx.memory.transition(opportunity, OpportunityStage.COMMERCIAL_REVIEW, reason)
+        ctx.audit.record(
+            "catalogue_gap",
+            summary=reason + " — add it to the catalogue to resume parked opportunities",
+            decision="escalate",
+            objective_id=ctx.objective_id,
+            task_id=ctx.task_id,
+            review_key=review_key,
+            reasons=[reason],
+        )
+        return self.ok(output={"parked": marker}, notes=[reason])
+
     def run(self, ctx: RunContext, task_input: dict) -> AgentResult:
         opportunity = ctx.session.get(Opportunity, task_input["opportunity_id"])
         if opportunity is None:
@@ -35,21 +49,35 @@ class SourcingAgent(BaseAgent):
         company = ctx.session.get(Company, opportunity.company_id)
         qual = opportunity.qualification or {}
         category = opportunity.product_category
-        econ_ref = UNIT_ECONOMICS.get(category, {})
+        simulation = ctx.settings.nexus_mode == "simulation"
+        settings = commercial.get(ctx.session)
+        stated_qty = qual.get("order_potential_units")
+        quantity = int(stated_qty or commercial.typical_order_qty(ctx.session, category, simulation))
+        quantity_basis = "buyer signal" if stated_qty else "typical order size (assumption)"
 
-        prompt = (
-            f"Find supply options for {category}. Return {{'offers':[{{'supplier_name','country',"
-            "'unit_cost_usd','unit_cost_high_usd','quantity_available','condition','lead_time_days',"
-            "'shipping_cost_usd','payment_terms','documents':[],'reliability','source'}]}."
-        )
-        data, cost = self.ask(ctx, prompt, {"product_category": category})
-        offers = data.get("offers") or []
-        quantity = int(qual.get("order_potential_units") or econ_ref.get("typical_qty", 10))
+        if simulation:
+            prompt = (
+                f"Find supply options for {category}. Return {{'offers':[{{'supplier_name','country',"
+                "'unit_cost_usd','unit_cost_high_usd','quantity_available','condition','lead_time_days',"
+                "'shipping_cost_usd','payment_terms','documents':[],'reliability','source'}]}."
+            )
+            data, cost = self.ask(ctx, prompt, {"product_category": category})
+            offers = data.get("offers") or []
+        else:
+            # Production: acquisition costs come only from the operator's catalogue.
+            offers = catalogue.current_offers(ctx.session, category, ctx.now.date())
+            cost = 0.0
 
-        viable = [o for o in offers if int(o.get("quantity_available", 0)) >= quantity]
+        def covers(offer: dict) -> bool:
+            available = offer.get("quantity_available")
+            moq = offer.get("moq")
+            return (available is None or int(available) >= quantity) and (moq is None or int(moq) <= quantity)
+
+        viable = [o for o in offers if covers(o)] or offers
         if not viable:
-            viable = offers
-        if not viable:
+            if not simulation:
+                return self._park(ctx, opportunity, AWAITING_OFFER, f"no current supplier offer for {category}",
+                                  stable_key("catalogue_gap", "offer", category))
             ctx.memory.transition(opportunity, OpportunityStage.STALE, "no supply found")
             return self.ok(output={"offers": 0}, cost_usd=cost, notes=["no supplier could cover this line"])
 
@@ -65,7 +93,7 @@ class SourcingAgent(BaseAgent):
         )
 
         # --- compliance gate before anything commercial happens -------------
-        required = REQUIRED_DOCUMENTS.get(category, set())
+        required = set(settings["required_documents"].get(category, []))
         held = {d.lower() for d in (best.get("documents") or [])}
         missing = sorted(d for d in required if d.lower() not in held)
         regulatory_checked = not missing
@@ -98,29 +126,48 @@ class SourcingAgent(BaseAgent):
             )
 
         # --- economics ------------------------------------------------------
-        price_low, price_high = econ_ref.get("unit_price", (None, None))
+        country = company.country if company else None
+        if simulation:
+            from app.simulation.fixtures import UNIT_ECONOMICS
+
+            price_low, price_high = UNIT_ECONOMICS.get(category, {}).get("unit_price", (None, None))
+            price_basis = "simulated market reference"
+        else:
+            reference = catalogue.price_reference(ctx.session, category, country, ctx.now.date())
+            if reference is None:
+                return self._park(
+                    ctx, opportunity, AWAITING_PRICE,
+                    f"no current selling-price reference for {category}" + (f" in {country}" if country else ""),
+                    stable_key("catalogue_gap", "price", category, country or ""),
+                )
+            price_low, price_high = reference.unit_price_low_usd, reference.unit_price_high_usd
+            price_basis = f"price book: {reference.basis} ({reference.source})"
         if price_low is None:
             return self.fail("no reference selling price available; refusing to invent one", cost_usd=cost)
         try:
             economics = compute_economics(
                 DealInputs(
                     quantity=quantity,
-                    selling_price=Money(low=price_low, high=price_high, confidence=0.5, basis="market reference"),
+                    selling_price=Money(low=price_low, high=price_high, confidence=0.5, basis=price_basis),
                     acquisition_cost=Money(
                         low=float(best["unit_cost_usd"]),
                         high=float(best.get("unit_cost_high_usd", best["unit_cost_usd"])),
                         confidence=0.7,
                         basis="supplier quote",
                     ),
-                    shipping=Money.exact(float(best.get("shipping_cost_usd", 0.0)), basis="supplier quote"),
-                    duties_taxes_pct=DEFAULT_DUTIES_PCT.get(company.country if company else "", None),
-                    transaction_cost_pct=0.03,
+                    shipping=(
+                        Money.exact(float(best["shipping_cost_usd"]), basis="supplier quote")
+                        if best.get("shipping_cost_usd") is not None
+                        else None
+                    ),
+                    duties_taxes_pct=commercial.duty_rate(ctx.session, country, simulation),
+                    transaction_cost_pct=float(settings["transaction_cost_pct"]),
                 )
             )
         except UnknownInput as exc:
             return self.fail(f"economics unavailable: {exc.message}", cost_usd=cost)
 
-        min_margin = float(task_input.get("min_margin_pct", DEFAULT_MIN_MARGIN_PCT))
+        min_margin = float(task_input.get("min_margin_pct") or settings["min_margin_pct"].get(category, 12.0))
         opportunity.supplier_id = supplier.id
         opportunity.economics = economics.summary() | {
             "unit_cost_usd": float(best["unit_cost_usd"]),
@@ -128,7 +175,11 @@ class SourcingAgent(BaseAgent):
             "lead_time_days": best.get("lead_time_days"),
             "condition": best.get("condition"),
             "min_margin_pct": min_margin,
+            "quantity_basis": quantity_basis,
+            "offer_id": best.get("offer_id"),
+            "supplier_source": best.get("source"),
         }
+        opportunity.blocked_reason = None
         opportunity.estimated_value_usd = economics.revenue.mid
         opportunity.estimated_margin_usd = economics.gross_profit.mid
         ctx.session.flush()

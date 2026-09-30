@@ -7,7 +7,7 @@ from app.core.context import RunContext
 from app.core.interfaces import AgentResult
 from app.core.types import EvidenceKind, ModelTier, OpportunityStage, REGULATED_CATEGORIES
 from app.database.models import Company, Contact, MarketAssessment, Opportunity
-from app.simulation.fixtures import UNIT_ECONOMICS
+from app.commercial import settings as commercial
 from sqlalchemy import select
 
 SCORE_WEIGHTS = {
@@ -39,7 +39,9 @@ class QualificationAgent(BaseAgent):
         contact = ctx.session.get(Contact, opportunity.contact_id) if opportunity.contact_id else None
         assert company is not None
 
-        econ = UNIT_ECONOMICS.get(opportunity.product_category, {})
+        typical = commercial.typical_order_qty(
+            ctx.session, opportunity.product_category, ctx.settings.nexus_mode == "simulation"
+        )
         prompt = (
             f"Qualify {company.name} for {opportunity.product_category}. Return "
             "{'product_fit','need_evidence','order_potential_units','timing','decision_maker_confidence',"
@@ -54,7 +56,7 @@ class QualificationAgent(BaseAgent):
                 "country": company.country,
                 "product_category": opportunity.product_category,
                 "buying_signals": company.buying_signals,
-                "typical_qty": econ.get("typical_qty", 20),
+                "typical_qty": typical,
             },
         )
         data["decision_maker_confidence"] = float(
@@ -113,8 +115,9 @@ class OpportunityScoringAgent(BaseAgent):
             return self.fail("opportunity not found")
         company = ctx.session.get(Company, opportunity.company_id)
         qual = opportunity.qualification or {}
-        econ = UNIT_ECONOMICS.get(opportunity.product_category, {})
-        typical_qty = max(econ.get("typical_qty", 20), 1)
+        typical_qty = commercial.typical_order_qty(
+            ctx.session, opportunity.product_category, ctx.settings.nexus_mode == "simulation"
+        )
 
         components = {
             "buyer_probability": round(

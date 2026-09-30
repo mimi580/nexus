@@ -20,6 +20,7 @@ from app.core.types import ActionKind, Decision, REGULATED_CATEGORIES, RiskLevel
 from app.database.models import Company, Contact, FollowUp, Message, SystemState
 from app.policies.fact_check import validate_message
 from app.policies.licenses import coverage
+from app.review.queue import approved_for, rejected
 
 SECRET_HINTS = ("api_key", "apikey", "password", "secret", "private_key", "authorization")
 
@@ -117,6 +118,14 @@ def rule_license(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
     if req.kind in commitment_kinds:
         return _block("R-REG-05", f"regulated commitment outside licence coverage: {result.reason}")
     return _escalate("R-REG-04", f"regulated contact outside licence coverage: {result.reason}")
+
+
+def rule_rejected_by_operator(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
+    """An action the operator rejected in review is never proposed again."""
+    item = rejected(ctx.session, req.idempotency_key)
+    if item is not None:
+        return _block("R-REV-01", f"operator rejected this action in review {item.id}")
+    return None
 
 
 def rule_regulated(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
@@ -266,6 +275,7 @@ DEFAULT_RULES: list[Rule] = [
     rule_no_secrets,
     rule_destructive,
     rule_commitments,
+    rule_rejected_by_operator,
     rule_regulated,
     rule_license,
     rule_opt_out,
@@ -315,6 +325,17 @@ class PolicyEngine:
                 risk=RiskLevel.HIGH,
             )
         if escalations:
+            approval = approved_for(
+                self.session, request.payload.get("approved_review_id"), request.idempotency_key
+            )
+            if approval is not None:
+                return PolicyResult(
+                    decision=Decision.ALLOW,
+                    reasons=[f"escalation waived by operator approval {approval.id}"]
+                    + [r for e in escalations for r in e.reasons],
+                    rule_ids=["R-REV-02"] + [r for e in escalations for r in e.rule_ids],
+                    risk=request.risk,
+                )
             return PolicyResult(
                 decision=Decision.ESCALATE,
                 reasons=[r for e in escalations for r in e.reasons],
