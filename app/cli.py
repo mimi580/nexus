@@ -20,9 +20,16 @@ def cmd_init_db(args: argparse.Namespace) -> int:
 def cmd_simulate(args: argparse.Namespace) -> int:
     from app.simulation.runner import run_simulation
 
-    report = run_simulation(
-        database_url=args.database_url, days=args.days, verbose=not args.quiet
-    )
+    # The simulated world never touches real data or real services: it runs in
+    # its own database (in memory unless --sim-database-url is given) with
+    # mock models, simulated e-mail and no live research, whatever .env says.
+    url = args.sim_database_url or "sqlite+pysqlite:///:memory:"
+    settings = get_settings().model_copy(update={
+        "nexus_mode": "simulation", "email_provider": "simulated", "database_url": url,
+        "anthropic_api_key": None, "openai_api_key": None, "search_provider": "none",
+        "notify_channels": "log",
+    })
+    report = run_simulation(database_url=url, days=args.days, settings=settings, verbose=not args.quiet)
     print(json.dumps(report, indent=2, default=str))
     return 0
 
@@ -314,6 +321,8 @@ def main(argv: list[str] | None = None) -> int:
     sim = sub.add_parser("simulate", help="run the full loop against the simulated world")
     sim.add_argument("--days", type=int, default=10)
     sim.add_argument("--quiet", action="store_true")
+    sim.add_argument("--sim-database-url", default=None,
+                     help="keep the simulated world in this database (default: in memory, discarded)")
     sim.set_defaults(func=cmd_simulate)
 
     run = sub.add_parser("run", help="run one orchestration pass")

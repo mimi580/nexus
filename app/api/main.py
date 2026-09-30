@@ -58,7 +58,13 @@ async def lifespan(_app: FastAPI):  # pragma: no cover - process lifecycle
     yield
 
 
-app = FastAPI(title="NEXUS AI", version="0.2.0", lifespan=lifespan)
+_production = get_settings().nexus_env == "production"
+# Interactive API docs would bypass the login, so they exist only in development.
+app = FastAPI(
+    title="NEXUS AI", version="0.2.0", lifespan=lifespan,
+    docs_url=None if _production else "/docs", redoc_url=None,
+    openapi_url=None if _production else "/openapi.json",
+)
 basic = HTTPBasic(auto_error=False)
 
 

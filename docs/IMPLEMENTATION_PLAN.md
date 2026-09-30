@@ -1,4 +1,4 @@
-# NEXUS AI v0.1 — Implementation Plan
+# NEXUS AI — Implementation Plan (v0.1, extended in v0.2)
 
 This plan maps `NEXUS_MASTER_SPEC.md` onto the code in this repository. Section
 numbers in brackets refer to the Master Spec.
@@ -196,3 +196,69 @@ Real web research, CRM and browser tools are not implemented — prospect and
 supplier data comes from the simulation fixtures behind the same interfaces. The
 SMTP/API email adapter is a skeleton. Redis is unused. The API has no
 authentication. These are listed with next steps in `README.md`.
+
+
+## 16. v0.2 additions
+
+v0.2 closes the gaps listed in section 15 and removes every path by which
+production could act on invented data.
+
+**No invented data in production.** Mock models are never registered in
+production mode, and the orchestrator refuses to run until
+`Settings.readiness()` reports nothing missing. Live providers now receive the
+agent's structured context (v0.1 sent only the instruction). Market research,
+prospect discovery, company intelligence and decision-maker discovery have
+grounded production paths (`app/agents/grounded.py`): the model reads stored
+`source_documents` and must cite them, and code accepts a name only if it
+appears in the cited source, a quote only if it is verbatim, and an e-mail
+address only if it is published on the organisation's own site. Acquisition
+costs and selling prices come only from the operator's supplier-offer
+catalogue and price book (`app/commercial/`); a gap parks the deal and opens
+one review item per gap, and `catalogue_recheck` resumes parked deals.
+
+**Research tools** (`app/tools/`): Brave, Tavily and Serper search; a fetcher
+that refuses private hosts, honours robots.txt, caps size and paces per domain;
+a research service that budgets, caches and persists every result.
+
+**Review queue** (`app/review/queue.py`): every escalation, from policy or from
+an agent, becomes a keyed `review_items` row via the audit logger. Approval
+re-runs the action through the policy engine with only escalations waived
+(R-REV-02); rejection is permanent (R-REV-01). Drafts are editable, and
+operator-approved text is exempt from the figure check only.
+
+**Replies and quotes** (`app/agents/reply.py`): positive replies produce a
+drafted answer with a suggested price computed in code (landed-cost floor at
+the minimum margin, bounded by the price book). Every reply escalates
+(R-REPLY-01).
+
+**E-mail** (`app/execution/`): SMTP with threading and RFC 8058 one-click
+unsubscribe, a code-appended identification footer, and signed unsubscribe
+tokens. The IMAP intake threads replies, applies bounces and opt-outs in code,
+sets aside auto-replies and routes unmatched mail to review.
+
+**Licence register** (`app/policies/licenses.py`): coverage by issuing country
+and declared regional scope (EAC, COMESA); cross-border commitments escalate
+with destination import checks (R-REG-06).
+
+**Operator surface:** HTTP Basic login (required in production), a rebuilt
+dashboard (reviews, pipeline and outcomes, catalogue import, licences,
+settings, system), Telegram/e-mail notifications with caps and de-duplication,
+and CLI tools (`doctor --live`, review, outcome, catalogue, settings, research).
+
+**Operations:** objectives are standing pipelines closed only by the operator,
+and the worker runs all due work each cycle. The Compose stack adds Caddy
+HTTPS, a worker heartbeat health check, backup/restore and a server bootstrap
+script. CI runs the tests, migration checks, a simulation, and the full Docker
+stack against PostgreSQL.
+
+**Budget accuracy:** model tier rates are at or above list prices, so the
+ledger stops early rather than late. `REQUIRE_OUTREACH_APPROVAL` (R-APPR-01)
+holds every outreach e-mail for approval during the first weeks.
+
+### Remaining limits
+
+- No CRM or browser automation; research is search plus public pages.
+- One worker process; the scheduler is database-driven (enough at NEXUS
+  volumes).
+- Currency: offers and prices are entered in USD.
+- The learning loop proposes parameter changes; activating them is manual.

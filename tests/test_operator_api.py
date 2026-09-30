@@ -193,3 +193,27 @@ def test_cli_doctor_settings_and_catalogue(tmp_path, capsys, monkeypatch):
     finally:
         reset_engine()
         reset_settings_cache()
+
+
+def test_simulate_never_touches_the_real_database(tmp_path, capsys, monkeypatch):
+    from app.cli import main
+    from app.database.models import Objective
+    from app.database.session import create_all, session_scope
+
+    real = f"sqlite+pysqlite:///{tmp_path}/real.sqlite3"
+    monkeypatch.setenv("DATABASE_URL", real)
+    monkeypatch.setenv("NEXUS_MODE", "production")
+    reset_settings_cache()
+    reset_engine()
+    try:
+        create_all(real)
+        assert main(["simulate", "--days", "1", "--quiet"]) == 0
+        report = json.loads(capsys.readouterr().out)
+        assert report["objective_id"]
+        reset_engine()
+        create_all(real)
+        with session_scope() as session:
+            assert session.scalar(select(Objective.id)) is None
+    finally:
+        reset_engine()
+        reset_settings_cache()

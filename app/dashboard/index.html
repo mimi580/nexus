@@ -271,7 +271,12 @@ function renderOverview(s) {
   list(el("blocked"), (s.blocked_actions || []).map((a) => ({ title: a.summary || a.type, cls: a.decision === "block" ? "stop-text" : "warn-text", detail: `${a.decision} · ${a.at.replace("T", " ").slice(0, 16)}` })), "Nothing held back.");
   list(el("compliance"), (s.compliance || []).map((x) => ({ title: String(x.flag).replace(/_/g, " "), cls: x.severity === "high" ? "stop-text" : "warn-text", detail: x.detail })), "No compliance events.");
   list(el("errors"), (s.errors || []).map((e) => ({ title: e.agent, detail: e.error })), "No failed tasks.");
-  list(el("objectives"), (s.objectives || []).map((o) => ({ title: o.title, detail: `${o.status} · ${(o.categories || []).join(", ")}` })), "No objectives yet.");
+  const objs = s.objectives || [];
+  el("objectives").innerHTML = objs.length ? objs.map((o) => `<li data-id="${esc(o.id)}"><b>${esc(o.title)}</b>${esc(o.status)} · ${esc((o.categories || []).join(", "))}
+    <div class="row" style="margin-top:6px">${o.status === "active" ? `<button data-s="paused">Pause</button> <button data-s="completed">Close</button>` : `<button data-s="active">Reactivate</button>`}</div></li>`).join("")
+    : '<li class="empty">No objectives yet.</li>';
+  el("objectives").querySelectorAll("button[data-s]").forEach((btn) => btn.onclick = () =>
+    act(() => api(`/api/objectives/${btn.closest("li").dataset.id}/status`, { method: "POST", body: JSON.stringify({ status: btn.dataset.s }) }), "Objective updated"));
   if (document.activeElement !== el("paused-cats")) el("paused-cats").value = (c.paused_categories || []).join(", ");
   if (document.activeElement !== el("paused-geos")) el("paused-geos").value = (c.paused_geographies || []).join(", ");
 }
