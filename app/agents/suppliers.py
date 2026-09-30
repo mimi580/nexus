@@ -181,7 +181,13 @@ class SupplierResearchAgent(BaseAgent):
         category = task_input["product_category"]
         limit = int(task_input.get("limit", 8))
         settings = commercial.get(ctx.session)
-        regions = task_input.get("regions") or settings["supplier_regions"].get(category, [])[:4]
+        if task_input.get("regions"):
+            regions = task_input["regions"]
+        else:  # regions whose suppliers actually quote are searched first (learned)
+            from app.learning.loop import rank_supplier_regions
+
+            regions = rank_supplier_regions(ctx.session, category, settings["supplier_regions"].get(category, []), 4,
+                                            ctx.now.strftime("%Y-%W"))
         if getattr(ctx.research, "live", False):
             proposals, docs, cost = self._search(ctx, category, regions, settings)
         else:
@@ -223,7 +229,9 @@ class SupplierResearchAgent(BaseAgent):
                 profile={"categories": [category]},
             )
             categories = sorted({*(company.profile or {}).get("categories", []), category})
-            company.profile = {**(company.profile or {}), "categories": categories}
+            source_region = item.get("_region") or (country if country in regions else None)
+            company.profile = {**(company.profile or {}), "categories": categories,
+                               **({"source_region": source_region} if source_region and is_new else {})}
             created += int(is_new)
             known += int(not is_new)
             evidence.append(

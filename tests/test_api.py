@@ -31,7 +31,7 @@ def test_objective_intake_and_run(client):
     assert client.post("/api/run").status_code == 200
     state = client.get("/api/state").json()
     assert state["objectives"][0]["title"] == "pipeline"
-    assert state["budget"]["limit_usd"] == 200.0
+    assert state["budget"]["limit_usd"] == 500.0
 
 
 def test_unknown_category_is_rejected(client):

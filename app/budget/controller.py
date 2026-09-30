@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import HARD_MONTHLY_CEILING_USD, Settings, get_settings
+from app.core.config import Settings, get_settings
 from app.core.errors import BudgetExceeded
 from app.core.types import utcnow
 from app.database.models import BudgetPeriod, CostEntry
@@ -35,15 +35,20 @@ class BudgetController:
         if row is None:
             row = BudgetPeriod(
                 period=period,
-                limit_usd=min(self.settings.budget_monthly_limit_usd, HARD_MONTHLY_CEILING_USD),
+                limit_usd=self.settings.budget_monthly_limit_usd,
                 category_limits=self.settings.category_limits,
             )
             self.session.add(row)
             self.session.flush()
+        elif row.limit_usd != self.settings.budget_monthly_limit_usd or row.category_limits != self.settings.category_limits:
+            # The operator changed the budget: it applies from now on, this month included.
+            row.limit_usd = self.settings.budget_monthly_limit_usd
+            row.category_limits = self.settings.category_limits
+            self.session.flush()
         return row
 
     def limit(self, period: str | None = None) -> float:
-        return min(self._period_row(period or period_of()).limit_usd, HARD_MONTHLY_CEILING_USD)
+        return float(self._period_row(period or period_of()).limit_usd)
 
     def category_limit(self, category: str, period: str | None = None) -> float | None:
         limits = self._period_row(period or period_of()).category_limits or {}
@@ -81,7 +86,12 @@ class BudgetController:
         return round(min(cap - self.encumbered(p, category), overall), 6)
 
     def hard_stopped(self, period: str | None = None) -> bool:
-        return self._period_row(period or period_of()).hard_stopped or self.remaining() <= EPSILON
+        p = period or period_of()
+        row = self._period_row(p)
+        if row.hard_stopped and self.remaining(p) > EPSILON:
+            row.hard_stopped = False  # the ceiling was raised: work may resume
+            self.session.flush()
+        return row.hard_stopped or self.remaining(p) <= EPSILON
 
     def set_hard_stop(self, value: bool, period: str | None = None) -> None:
         self._period_row(period or period_of()).hard_stopped = value
@@ -90,7 +100,7 @@ class BudgetController:
     # --------------------------------------------------------------- actions
     def can_spend(self, category: str, amount: float, period: str | None = None) -> bool:
         p = period or period_of()
-        if self._period_row(p).hard_stopped:
+        if self.hard_stopped(p):
             return False
         if amount < 0:
             return False
@@ -144,6 +154,19 @@ class BudgetController:
         rid = self.reserve(category, amount, reason)
         self.commit(rid, amount)
         return rid
+
+    def record_incurred(self, category: str, amount: float, reason: str = "", reference: str | None = None) -> str:
+        """Spend a third party has already charged (ad platforms report it after
+        the fact). Always recorded, never refused; if it exhausts the line or the
+        month, the hard stop engages and callers must stop spending (the ads
+        engine pauses every campaign when it sees that)."""
+        entry = CostEntry(period=period_of(), category=category, amount_usd=round(float(amount), 6),
+                          state="committed", reason=reason[:300], reference=reference)
+        self.session.add(entry)
+        self.session.flush()
+        if self.remaining(entry.period) <= EPSILON:
+            self.set_hard_stop(True, entry.period)
+        return entry.id
 
     # --------------------------------------------------------------- reports
     def forecast(self, period: str | None = None, now: datetime | None = None) -> float:

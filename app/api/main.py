@@ -626,6 +626,357 @@ def deactivate(license_id: str, actor: str = Operator) -> dict:
         return lic_as_dict(lic, ctx.now.date())
 
 
+
+# ------------------------------------------------------------------ public site (landing pages, enquiries)
+# No login: these pages are what ads send people to. Nothing here reveals
+# operator data; enquiries are validated, rate-limited and spam-trapped.
+
+def _site_params(request: Request) -> dict[str, str]:
+    from app.site.render import ATTRIBUTION_PARAMS
+
+    return {k: request.query_params.get(k, "")[:300] for k in ATTRIBUTION_PARAMS}
+
+
+def _visitor(request: Request, settings: Any) -> str:
+    from app.site.leads import visitor_hash
+
+    forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    ip = forwarded or (request.client.host if request.client else "")
+    from datetime import date
+
+    return visitor_hash(settings, ip, request.headers.get("user-agent", ""), date.today().isoformat())
+
+
+def _published(session, slug: str):
+    from app.database.models import LandingPage
+
+    page = session.scalar(select(LandingPage).where(LandingPage.slug == slug))
+    if page is None or page.status != "published":
+        raise HTTPException(status_code=404, detail="page not found")
+    return page
+
+
+def _wa_route(slug: str, params: dict[str, str]) -> str | None:
+    from urllib.parse import urlencode
+
+    if not get_settings().whatsapp_number:
+        return None
+    query = urlencode({k: v for k, v in params.items() if v})
+    return f"/p/{slug}/wa" + (f"?{query}" if query else "")
+
+
+@app.get("/site", response_class=HTMLResponse)
+def site_index() -> str:
+    from app.database.models import LandingPage
+    from app.site.render import render_index
+
+    with session_scope() as session:
+        pages = list(session.scalars(select(LandingPage).where(LandingPage.status == "published").order_by(LandingPage.slug)))
+        return render_index(pages, get_settings())
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_page() -> str:
+    from app.site.render import render_privacy
+
+    return render_privacy(get_settings())
+
+
+@app.get("/p/{slug}", response_class=HTMLResponse)
+def landing_page(slug: str, request: Request) -> str:
+    from app.site.leads import is_bot, record_event
+    from app.site.render import render_landing
+
+    params = _site_params(request)
+    with session_scope() as session:
+        page = _published(session, slug)
+        if not is_bot(request.headers.get("user-agent", "")):
+            record_event(session, page, "view", params, _visitor(request, get_settings()))
+        return render_landing(page, params, _wa_route(slug, params))
+
+
+@app.get("/p/{slug}/wa")
+def landing_whatsapp(slug: str, request: Request):
+    from fastapi.responses import RedirectResponse
+
+    from app.site.leads import is_bot, record_event
+    from app.site.render import whatsapp_link
+
+    settings = get_settings()
+    with session_scope() as session:
+        page = _published(session, slug)
+        link = whatsapp_link(settings, page)
+        if link is None:
+            raise HTTPException(status_code=404, detail="WhatsApp is not set up")
+        if not is_bot(request.headers.get("user-agent", "")):
+            record_event(session, page, "whatsapp", _site_params(request), _visitor(request, settings))
+        return RedirectResponse(link, status_code=302)
+
+
+@app.post("/p/{slug}/enquiry", response_class=HTMLResponse)
+async def landing_enquiry(slug: str, request: Request):
+    from urllib.parse import parse_qs
+
+    from app.site.leads import LeadRejected, intake
+    from app.site.render import render_landing, render_thanks
+
+    raw = await request.body()
+    if len(raw) > 20_000:
+        raise HTTPException(status_code=413, detail="enquiry too large")
+    form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", errors="replace"), keep_blank_values=True).items()}
+    settings = get_settings()
+    with session_scope() as session:
+        page = _published(session, slug)
+        ctx = build_context(session)
+        params = {k: form.get(k, "") for k in _site_params(request)}
+        try:
+            intake(ctx, page, form, _visitor(request, settings))
+        except LeadRejected as exc:
+            html = render_landing(page, params, _wa_route(slug, params)).replace(
+                "<form class='enq'", f"<p class='err' role='alert'>{_esc(str(exc))}</p><form class='enq'", 1)
+            return HTMLResponse(html, status_code=422)
+        return HTMLResponse(render_thanks(page, _wa_route(slug, params)))
+
+
+def _esc(text: str) -> str:
+    from html import escape
+
+    return escape(text)
+
+
+# ------------------------------------------------------------------ ads, leads, learning (operator)
+
+
+class CampaignActionIn(BaseModel):
+    action: str  # pause | resume | budget | remove
+    daily_budget_usd: float | None = None
+
+
+class PlanAdsIn(BaseModel):
+    platform: str | None = None
+    product_category: str | None = None
+    country: str | None = None
+
+
+def _campaign_row(session, c) -> dict:
+    from app.database.models import AdVariant
+    from app.learning.signals import campaign_totals, variant_stats
+
+    t = campaign_totals(session, c.id)
+    stats = variant_stats(session, c.id)
+    return {
+        "id": c.id, "platform": c.platform, "name": c.name, "category": c.product_category, "countries": c.countries,
+        "status": c.status, "status_reason": c.status_reason, "daily_budget_usd": c.daily_budget_usd,
+        "launched_at": c.launched_at.isoformat() if c.launched_at else None, **t,
+        "ctr": round(t["clicks"] / t["impressions"], 4) if t["impressions"] else None,
+        "cost_per_lead": round(t["spend_usd"] / t["leads"], 2) if t["leads"] else None,
+        "lead_rate": round(t["leads"] / t["clicks"], 4) if t["clicks"] else None,
+        "plan": c.plan, "targeting": c.targeting,
+        "variants": [{"key": v.key, "angle": v.angle, "status": v.status, "status_reason": v.status_reason,
+                      "content": v.content, "asset_id": v.asset_id, **stats.get(v.key, {})}
+                     for v in session.scalars(select(AdVariant).where(AdVariant.campaign_id == c.id))],
+    }
+
+
+@app.get("/api/ads/campaigns")
+def list_campaigns(_: str = Operator) -> list[dict]:
+    from app.database.models import AdCampaign
+
+    with session_scope() as session:
+        return [_campaign_row(session, c) for c in session.scalars(select(AdCampaign).order_by(desc(AdCampaign.created_at)))]
+
+
+@app.post("/api/ads/plan")
+def plan_ads(payload: PlanAdsIn, actor: str = Operator) -> dict:
+    from app.core.ids import stable_key
+
+    with session_scope() as session:
+        ctx = build_context(session)
+        task, created = ctx.tasks.create_task(
+            agent="ad_planner", objective_id=None, task_input=payload.model_dump(exclude_none=True), priority=75,
+            idempotency_key=stable_key("ad_planner_manual", actor, ctx.now.isoformat()))
+        return {"task_id": task.id, "queued": created}
+
+
+@app.post("/api/ads/campaigns/{campaign_id}")
+def campaign_action(campaign_id: str, payload: CampaignActionIn, actor: str = Operator) -> dict:
+    from app.ads.agents import fx_to_native
+    from app.ads.platforms import AdPlatformError, platform_for
+    from app.database.models import AdCampaign
+
+    with session_scope() as session:
+        ctx = build_context(session)
+        c = session.get(AdCampaign, campaign_id)
+        if c is None:
+            raise HTTPException(status_code=404, detail="campaign not found")
+        platform = platform_for(ctx, c.platform)
+        live = bool(c.external_ids) and platform is not None
+        try:
+            if payload.action == "pause":
+                if live:
+                    platform.set_status(c.external_ids, active=False)
+                c.status, c.status_reason = "paused", f"paused by {actor}"
+            elif payload.action == "resume":
+                if c.status not in ("paused", "paused_no_leads"):
+                    raise HTTPException(status_code=422, detail=f"cannot resume a campaign that is {c.status}")
+                if live:
+                    platform.set_status(c.external_ids, active=True)
+                c.status, c.status_reason = "active", None
+            elif payload.action == "budget":
+                value = float(payload.daily_budget_usd or 0)
+                if value < ctx.settings.ads_min_daily_budget_usd:
+                    raise HTTPException(status_code=422, detail=f"minimum is {ctx.settings.ads_min_daily_budget_usd} USD/day")
+                if live:
+                    platform.set_budget(c.external_ids, fx_to_native(ctx, value, platform.currency))
+                c.daily_budget_usd = round(value, 2)
+            elif payload.action == "remove":
+                if live:
+                    platform.set_status(c.external_ids, active=False)
+                c.status, c.status_reason = "removed", f"removed by {actor}"
+            else:
+                raise HTTPException(status_code=422, detail="action must be pause, resume, budget or remove")
+        except AdPlatformError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        ctx.audit.record("ad_campaign_operator", summary=f"{payload.action} {c.name}", actor=actor, decision="allow",
+                         campaign_id=c.id, daily_budget_usd=c.daily_budget_usd)
+        return _campaign_row(session, c)
+
+
+@app.get("/api/ads/assets")
+def list_assets(_: str = Operator) -> list[dict]:
+    from app.database.models import AdAsset
+
+    with session_scope() as session:
+        return [{"id": a.id, "category": a.product_category, "kind": a.kind, "filename": a.filename,
+                 "caption": a.caption, "active": a.active, "created_at": a.created_at.isoformat()}
+                for a in session.scalars(select(AdAsset).order_by(desc(AdAsset.created_at)).limit(200))]
+
+
+@app.post("/api/ads/assets", status_code=201)
+async def upload_asset(request: Request, category: str, caption: str = "", actor: str = Operator) -> dict:
+    from app.ads.compliance import ad_allowed
+    from app.ads.creative import normalise_photo
+    from app.database.models import AdAsset
+
+    if category not in {c.value for c in ProductCategory} or not ad_allowed(category):
+        raise HTTPException(status_code=422, detail="unknown product line, or one that is never advertised")
+    raw = await request.body()
+    if len(raw) > 8_000_000:
+        raise HTTPException(status_code=413, detail="image over 8 MB")
+    try:
+        data, content_type = normalise_photo(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    with session_scope() as session:
+        asset = AdAsset(product_category=category, kind="photo", filename=f"{category}.jpg", content_type=content_type,
+                        data=data, caption=caption[:300])
+        session.add(asset)
+        session.flush()
+        build_context(session).audit.record("ad_asset_uploaded", summary=f"{category} photo", actor=actor,
+                                            decision="allow", asset_id=asset.id)
+        return {"id": asset.id}
+
+
+@app.post("/api/ads/assets/{asset_id}/deactivate")
+def deactivate_asset(asset_id: str, _: str = Operator) -> dict:
+    from app.database.models import AdAsset
+
+    with session_scope() as session:
+        asset = session.get(AdAsset, asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="asset not found")
+        asset.active = False
+        return {"id": asset.id, "active": False}
+
+
+@app.get("/a/{asset_id}")
+def asset_file(asset_id: str, _: str = Operator):
+    from fastapi.responses import Response
+
+    from app.database.models import AdAsset
+
+    with session_scope() as session:
+        asset = session.get(AdAsset, asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="asset not found")
+        return Response(asset.data, media_type=asset.content_type)
+
+
+@app.get("/api/pages")
+def list_pages(_: str = Operator) -> list[dict]:
+    from app.database.models import LandingPage, Lead, PageEvent
+
+    settings = get_settings()
+    with session_scope() as session:
+        rows = []
+        for p in session.scalars(select(LandingPage).order_by(LandingPage.slug)):
+            events = dict(session.execute(select(PageEvent.kind, func.count()).where(PageEvent.landing_page_id == p.id)
+                                          .group_by(PageEvent.kind)).all())
+            leads = session.scalar(select(func.count()).select_from(Lead).where(Lead.landing_page_id == p.id, Lead.status != "spam"))
+            rows.append({"slug": p.slug, "category": p.product_category, "country": p.country, "status": p.status,
+                         "version": p.version, "headline": (p.content or {}).get("headline"),
+                         "url": f"{settings.site_url}/p/{p.slug}" if settings.site_url else f"/p/{p.slug}",
+                         "views": events.get("view", 0), "whatsapp": events.get("whatsapp", 0), "leads": leads,
+                         "conversion": round(leads / events["view"], 4) if events.get("view") else None})
+        return rows
+
+
+@app.post("/api/pages")
+def publish_page(payload: dict = Body(...), actor: str = Operator) -> dict:
+    from app.site.pages import LandingPageAgent
+
+    category, country = payload.get("product_category"), payload.get("country")
+    if category not in {c.value for c in ProductCategory} or not country:
+        raise HTTPException(status_code=422, detail="product_category and country are required")
+    with session_scope() as session:
+        ctx = build_context(session)
+        result = LandingPageAgent().run(ctx, {"product_category": category, "country": country})
+        if not result.ok:
+            raise HTTPException(status_code=422, detail=result.error)
+        return result.output
+
+
+@app.get("/api/leads")
+def list_leads(limit: int = 200, _: str = Operator) -> list[dict]:
+    from app.database.models import Lead
+
+    with session_scope() as session:
+        return [{"id": lead.id, "at": lead.created_at.isoformat(), "name": lead.full_name, "organisation": lead.organisation,
+                 "email": lead.email, "phone": lead.phone, "country": lead.country, "category": lead.product_category,
+                 "quantity": lead.quantity, "message": lead.message[:500], "platform": lead.platform, "campaign_id": lead.campaign_id,
+                 "variant": lead.variant_key, "status": lead.status, "opportunity_id": lead.opportunity_id,
+                 "conversions_sent": lead.conversions_sent}
+                for lead in session.scalars(select(Lead).where(Lead.status != "spam").order_by(desc(Lead.created_at)).limit(min(limit, 1000)))]
+
+
+@app.get("/api/learning")
+def learning_state(refresh: bool = False, _: str = Operator) -> dict:
+    from app.database.models import SystemState
+    from app.learning import loop
+
+    with session_scope() as session:
+        ctx = build_context(session)
+        row = session.get(SystemState, "learning_snapshot")
+        if refresh or row is None:
+            data = loop.snapshot(ctx)
+            stored = row.value if row is not None else {}
+            data.update({k: stored[k] for k in ("calibration", "rollback", "observations", "metrics") if k in stored})
+            return data
+        return row.value
+
+
+@app.post("/api/learning/rollback")
+def learning_rollback(payload: dict = Body(default={}), actor: str = Operator) -> dict:
+    from app.learning import loop
+
+    with session_scope() as session:
+        ctx = build_context(session)
+        if loop.active_scoring(session) is None:
+            raise HTTPException(status_code=422, detail="the default scoring weights are already in use")
+        restored = loop.rollback_scoring(ctx, reason=payload.get("reason") or "operator rollback", actor=actor)
+        return {"restored_version": restored.version if restored else 0, "weights": loop.active_weights(session)}
+
+
 # ------------------------------------------------------------------ dashboard
 
 

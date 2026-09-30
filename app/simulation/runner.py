@@ -52,6 +52,13 @@ def run_simulation(
     verbose: bool = False,
 ) -> dict:
     settings = settings or get_settings()
+    if settings.nexus_mode != "production":
+        # Simulated ad platforms spend nothing, so launches need no approval here,
+        # and pages need an address to exist.
+        settings = settings.model_copy(update={
+            "ads_require_launch_approval": False,
+            "public_site_url": settings.public_site_url or "https://site.simulation.example",
+        })
     if database_url:
         reset_engine()
     create_all(database_url)
@@ -79,6 +86,16 @@ def run_simulation(
         for fixture in LICENSES:
             if (fixture["country"], fixture["license_number"]) not in existing:
                 add_license(session, **fixture)
+
+        from app.commercial import catalogue
+        from app.simulation.fixtures import SIM_CATALOGUE, SIM_PRICES
+
+        if not catalogue.list_offers(session):
+            for offer in SIM_CATALOGUE:
+                catalogue.add_offer(session, **offer)
+        if not catalogue.list_price_references(session):
+            for price in SIM_PRICES:
+                catalogue.add_price_reference(session, **price)
 
         for day in range(days):
             loop = orchestrator.run(objective.id)
@@ -131,6 +148,15 @@ def run_simulation(
             select(func.count()).select_from(AuditEvent).where(AuditEvent.decision == "block")
         )
         report["budget"] = ctx.budget.snapshot()
+        from app.database.models import AdCampaign, LandingPage, Lead
+
+        report["ads"] = {
+            "campaigns": {status: n for status, n in session.execute(
+                select(AdCampaign.status, func.count()).group_by(AdCampaign.status)).all()},
+            "landing_pages": session.scalar(select(func.count()).select_from(LandingPage)),
+            "leads": {platform: n for platform, n in session.execute(
+                select(Lead.platform, func.count()).where(Lead.status != "spam").group_by(Lead.platform)).all()},
+        }
         report["license_escalations"] = sum(
             1
             for payload in session.scalars(

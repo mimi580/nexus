@@ -324,6 +324,21 @@ class MockProvider(BaseProvider):
             "confidence": 0.5,
         }
 
+    def _landing_copy(self, ctx: dict, rng: random.Random) -> dict:
+        from app.site.pages import template_content
+
+        return template_content(ctx) if ctx.get("category") else {}
+
+    def _ad_copy(self, ctx: dict, rng: random.Random) -> dict:
+        from app.ads.copy import KEYWORDS, template
+
+        facts = ctx.get("facts") or {}
+        if not facts.get("category"):
+            return {"variants": {}, "keywords": []}
+        variants = {a: template(ctx.get("platform", "google"), facts, a) for a in ctx.get("angles") or []}
+        extra = [k.format(country=facts["country"].lower()) for k in KEYWORDS.get(facts["category"], [])][:3]
+        return {"variants": variants, "keywords": extra + ["free laptops"]}
+
     HANDLERS = {
         "market_research": "_market_research",
         "prospect_discovery": "_prospects",
@@ -341,6 +356,8 @@ class MockProvider(BaseProvider):
         "supplier_quote_extraction": "_supplier_quote",
         "response_classification": "_classify",
         "learning_review": "_learning",
+        "landing_copy": "_landing_copy",
+        "ad_copy": "_ad_copy",
     }
 
     def complete(self, request: ModelRequest) -> ModelResponse:

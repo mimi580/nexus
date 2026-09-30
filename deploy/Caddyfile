@@ -10,3 +10,8 @@
 	}
 	reverse_proxy api:8000
 }
+
+# Optional public website for landing pages (a separate, customer-facing domain).
+# Copy deploy/site.caddy.example to deploy/sites/site.caddy, put your domain in it,
+# set PUBLIC_SITE_URL in .env and restart caddy. With no file there, nothing changes.
+import sites/*.caddy

@@ -1,0 +1,20 @@
+# Customer-facing site: only the public pages are reachable here, never the dashboard or API.
+# Replace the domain, save as deploy/sites/site.caddy, set PUBLIC_SITE_URL=https://www.yourbrand.com
+www.yourbrand.com, yourbrand.com {
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+	@public path /p/* /privacy /site
+	handle @public {
+		reverse_proxy api:8000
+	}
+	handle / {
+		redir /site 302
+	}
+	handle {
+		respond "Not found" 404
+	}
+}

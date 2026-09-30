@@ -75,6 +75,9 @@
   <button data-tab="reviews">Reviews <span class="badge hidden" id="review-badge">0</span></button>
   <button data-tab="pipeline">Pipeline</button>
   <button data-tab="suppliers">Suppliers</button>
+  <button data-tab="ads">Ads</button>
+  <button data-tab="leads">Leads</button>
+  <button data-tab="learning">Learning</button>
   <button data-tab="catalogue">Catalogue</button>
   <button data-tab="licences">Licences</button>
   <button data-tab="settings">Settings</button>
@@ -138,6 +141,42 @@
     </section>
     <div class="row" style="margin-bottom:12px"><select id="sup-filter"><option value="">All suppliers</option><option>qualified</option><option>rfq_sent</option><option>quoted</option><option>approved</option><option>lead</option><option>declined</option><option>unresponsive</option><option>rejected</option><option>blocked</option></select></div>
     <section class="scroll"><table id="sup-table"></table></section>
+  </div>
+
+  <!-- ADS -->
+  <div data-panel="ads" class="hidden">
+    <section style="margin-bottom:18px">
+      <h2>Advertising</h2>
+      <p class="small muted">NEXUS plans Google search and Meta (Facebook/Instagram) campaigns per product line and country from your catalogue, writes and checks the ads, and sends people to a landing page with a quotation form. Pharmaceuticals are never advertised. New campaigns wait in Reviews for your approval; after launch NEXUS moves budget toward what brings enquiries, replaces losing ads and pauses campaigns that spend without results.</p>
+      <div class="row"><select id="ad-platform"><option value="">Both platforms</option><option value="google">Google</option><option value="meta">Meta</option></select>
+        <select id="ad-cat"></select><input id="ad-country" placeholder="Country (optional)"><button id="ad-plan" class="primary">Plan campaigns</button></div>
+    </section>
+    <div id="ad-list"></div>
+    <section style="margin-top:18px">
+      <h2>Product photos for Meta ads</h2>
+      <p class="small muted">Real photos of the stock convert far better than generated cards. JPG or PNG, at least 500×500. Used in rotation for that product line.</p>
+      <div class="row"><select id="asset-cat"></select><input id="asset-caption" placeholder="Caption (optional)"><input type="file" id="asset-file" accept="image/jpeg,image/png"><button id="asset-upload">Upload</button></div>
+      <div id="asset-list" class="row" style="margin-top:10px;flex-wrap:wrap"></div>
+    </section>
+  </div>
+
+  <!-- LEADS -->
+  <div data-panel="leads" class="hidden">
+    <section class="scroll" style="margin-bottom:18px"><h2>Landing pages</h2>
+      <p class="small muted">One page per product line and country, written only from your catalogue, price book and licences. Views, WhatsApp clicks and enquiries are counted per page.</p>
+      <div class="row" style="margin-bottom:8px"><select id="page-cat"></select><input id="page-country" placeholder="Country"><button id="page-publish">Publish / refresh page</button></div>
+      <table id="page-table"></table></section>
+    <section class="scroll"><h2>Enquiries</h2><table id="lead-table"></table></section>
+  </div>
+
+  <!-- LEARNING -->
+  <div data-panel="learning" class="hidden">
+    <section style="margin-bottom:18px"><h2>What NEXUS has learned</h2>
+      <p class="small muted">Each repeated choice is tested against real results: e-mail angles and subject styles (positive replies), ad angles (enquiries per click), supplier regions (quotes received) and the opportunity scoring weights (which contacted deals engaged). "Chance best" is how likely each option is to be the best given the data so far; options with little data still get tried.</p>
+      <div class="row"><button id="learn-refresh">Recalculate now</button><button id="learn-rollback" class="danger">Roll back scoring weights</button></div>
+      <div id="learn-summary" style="margin-top:10px"></div>
+    </section>
+    <div id="learn-body"></div>
   </div>
 
   <!-- CATALOGUE -->
@@ -311,6 +350,7 @@ async function loadReviews() {
   el("review-list").innerHTML = items.length ? items.map((i) => {
     const a = i.action || {}; const o = i.opportunity;
     const isSend = ["outreach_approval", "reply_approval", "supplier_rfq_approval"].includes(i.kind);
+    const isAd = i.kind === "ad_campaign";
     const p = a.pricing;
     const decided = i.status !== "pending";
     return `<div class="card" data-id="${esc(i.id)}">
@@ -325,6 +365,7 @@ async function loadReviews() {
           <td>${esc(o.currency || "USD")} ${esc((o.unit_cost_usd || []).join(" – "))}</td><td>${esc(o.moq ?? "—")} / ${esc(o.quantity_available ?? "—")}</td>
           <td class="small">${esc([o.incoterm, o.payment_terms, o.lead_time_days ? o.lead_time_days + " days" : ""].filter(Boolean).join(" · "))}</td>
           <td class="small">${esc((o.documents || []).join(", ") || "none stated")}</td></tr>`).join("")}</table></div>` : ""}
+      ${isAd && a.ad_preview ? `<div class="small muted" style="margin-top:6px">The ads, as they will run:</div><div class="draft">${esc(a.ad_preview)}</div>` : ""}
       ${p ? `<div class="draft small">Suggested price <b>${money(p.suggested_unit_price_usd)}</b>/unit for ${esc(p.quantity)} units · landed cost ${money(p.unit_landed_cost_usd)}/unit · floor at ${esc(p.min_margin_pct)}% margin ${money(p.floor_unit_price_usd)} · price book ${range(p.price_book_unit_usd)}<br><span class="muted">${esc(p.note)}</span></div>` : ""}
       ${a.body && isSend && !decided ? `<div class="small muted" style="margin-top:6px">To ${esc(a.to || "")} — edit before approving if needed:</div>
         <input class="edit-subject" value="${esc(a.subject || "")}" style="width:100%;margin:6px 0">
@@ -333,7 +374,7 @@ async function loadReviews() {
       ${decided ? `<div class="small muted">${esc(i.status)} by ${esc(i.decided_by)} ${esc((i.decided_at || "").slice(0, 16).replace("T", " "))}${i.decision_note ? " · " + esc(i.decision_note) : ""}</div>` : `
       <textarea class="note" placeholder="Note (optional): why, what you agreed, next step"></textarea>
       <div class="row" style="margin-top:8px">
-        ${isSend ? `<button class="primary" data-d="approve">Approve and send</button>` : i.kind === "supplier_quote" ? `<button class="primary" data-d="approve">Activate in catalogue</button>` : `<button class="primary" data-d="resolve">Mark resolved</button>`}
+        ${isSend ? `<button class="primary" data-d="approve">Approve and send</button>` : isAd ? `<button class="primary" data-d="approve">Approve and launch</button>` : i.kind === "supplier_quote" ? `<button class="primary" data-d="approve">Activate in catalogue</button>` : `<button class="primary" data-d="resolve">Mark resolved</button>`}
         <button class="danger" data-d="reject">Reject${o ? " (close deal)" : ""}</button>
       </div>`}
     </div>`;
@@ -456,6 +497,95 @@ el("save-commercial").onclick = () => {
 el("save-pauses").onclick = () => act(() => api("/api/control", { method: "POST", body: JSON.stringify({
   paused_categories: csvList(el("paused-cats").value), paused_geographies: csvList(el("paused-geos").value) }) }), "Pauses saved");
 
+
+// ------------------------------------------------------------------ ads
+const AD_CATS = CATEGORIES.filter((c) => c !== "pharmaceutical");
+["ad-cat", "asset-cat", "page-cat"].forEach((id) => el(id).innerHTML = (id === "ad-cat" ? '<option value="">All product lines</option>' : "") + AD_CATS.map((c) => `<option value="${c}">${words(c)}</option>`).join(""));
+el("ad-plan").onclick = () => act(() => api("/api/ads/plan", { method: "POST", body: JSON.stringify({
+  platform: el("ad-platform").value || null, product_category: el("ad-cat").value || null, country: el("ad-country").value.trim() || null }) }), "Planning queued; proposals appear in Reviews after the next pass");
+function adVariant(c, v) {
+  const x = v.content || {};
+  const text = c.platform === "google" ? `${esc((x.headlines || []).slice(0, 4).join(" | "))}<div class="muted">${esc((x.descriptions || [])[0] || "")}</div>`
+    : `<b>${esc(x.headline || "")}</b><div class="muted">${esc((x.primary_text || "").slice(0, 180))}</div>`;
+  return `<tr><td>${words(v.angle)}<div class="small muted">${esc(v.key)} · ${esc(v.status)}</div>${v.asset_id ? `<a class="small" href="/a/${esc(v.asset_id)}" target="_blank" rel="noopener">image</a>` : ""}</td>
+    <td class="small">${text}</td><td>${v.clicks ?? 0}</td><td>${v.leads ?? 0}</td><td>${money(v.spend_usd ?? 0)}</td>
+    <td class="small">${v.status_reason ? esc(v.status_reason) : ""}</td></tr>`;
+}
+async function loadAds() {
+  const [camps, assets] = await Promise.all([api("/api/ads/campaigns"), api("/api/ads/assets")]);
+  el("ad-list").innerHTML = camps.length ? camps.map((c) => `<section class="card" data-id="${esc(c.id)}" style="margin-bottom:14px">
+    <div class="kind">${esc(c.platform)} · ${words(c.status)}${c.status_reason ? " · " + esc(c.status_reason) : ""}</div>
+    <h3>${esc(c.name)}</h3>
+    <div class="small">Budget <b>${money(c.daily_budget_usd)}/day</b> · spent ${money(c.spend_usd)} · ${c.impressions} impressions · ${c.clicks} clicks (CTR ${c.ctr == null ? "—" : pct(c.ctr)}) ·
+      <b>${c.leads} enquiries</b> (${c.lead_rate == null ? "—" : pct(c.lead_rate)} of clicks) · cost per enquiry ${c.cost_per_lead == null ? "—" : money(c.cost_per_lead)} · ${c.won} won</div>
+    ${(c.targeting && (c.targeting.keywords || []).length) ? `<div class="small muted" style="margin-top:4px">Keywords: ${esc(c.targeting.keywords.slice(0, 12).join(", "))}${c.targeting.keywords.length > 12 ? "…" : ""}</div>` : ""}
+    <div class="scroll"><table><tr><th>Angle</th><th>Ad</th><th>Clicks</th><th>Enquiries</th><th>Spend</th><th></th></tr>${(c.variants || []).map((v) => adVariant(c, v)).join("")}</table></div>
+    <div class="row" style="margin-top:8px">
+      ${c.status === "active" ? `<button data-a="pause">Pause</button>` : ""}
+      ${["paused", "paused_no_leads"].includes(c.status) ? `<button data-a="resume">Resume</button>` : ""}
+      ${["active", "paused", "paused_no_leads", "paused_budget"].includes(c.status) ? `<button data-a="budget">Change budget</button> <button class="danger" data-a="remove">Remove</button>` : ""}
+    </div></section>`).join("") : '<p class="empty">No campaigns yet. Add supplier offers and selling prices for a product line, then plan campaigns.</p>';
+  el("ad-list").querySelectorAll("button[data-a]").forEach((btn) => btn.onclick = () => {
+    const body = { action: btn.dataset.a };
+    if (body.action === "budget") { const v = prompt("New daily budget in USD"); if (!v) return; body.daily_budget_usd = Number(v); }
+    if (body.action === "remove" && !confirm("Stop this campaign for good?")) return;
+    act(() => api(`/api/ads/campaigns/${btn.closest("section").dataset.id}`, { method: "POST", body: JSON.stringify(body) }), "Campaign updated").then(loadAds);
+  });
+  el("asset-list").innerHTML = assets.filter((a) => a.kind === "photo" && a.active).map((a) => `<div class="card small" data-id="${esc(a.id)}" style="width:150px">
+    <img src="/a/${esc(a.id)}" alt="" style="width:100%;border-radius:6px"><div>${words(a.category)}</div><button>Remove</button></div>`).join("") || '<span class="small muted">No photos yet: Meta ads use generated cards.</span>';
+  el("asset-list").querySelectorAll("button").forEach((btn) => btn.onclick = () =>
+    act(() => api(`/api/ads/assets/${btn.closest(".card").dataset.id}/deactivate`, { method: "POST" }), "Photo removed").then(loadAds));
+}
+el("asset-upload").onclick = async () => {
+  const file = el("asset-file").files[0]; if (!file) return toast("Choose a photo first");
+  try {
+    const res = await fetch(`/api/ads/assets?category=${encodeURIComponent(el("asset-cat").value)}&caption=${encodeURIComponent(el("asset-caption").value)}`, { method: "POST", headers: { "content-type": file.type }, body: file });
+    if (!res.ok) throw new Error((await res.json()).detail);
+    toast("Photo added"); loadAds();
+  } catch (e) { toast("Failed: " + e.message); }
+};
+
+// ------------------------------------------------------------------ leads
+async function loadLeads() {
+  const [pages, leads] = await Promise.all([api("/api/pages"), api("/api/leads")]);
+  el("page-table").innerHTML = `<tr><th>Page</th><th>Views</th><th>WhatsApp</th><th>Enquiries</th><th>Conversion</th></tr>` +
+    (pages.length ? pages.map((p) => `<tr><td><a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:var(--flow)">${esc(p.headline || p.slug)}</a><div class="small muted">${words(p.category)} · ${esc(p.country)} · v${p.version} · ${esc(p.status)}</div></td>
+      <td>${p.views}</td><td>${p.whatsapp}</td><td>${p.leads}</td><td>${p.conversion == null ? "—" : pct(p.conversion)}</td></tr>`).join("")
+      : `<tr><td class="empty" colspan="5">No pages yet. Publish one above, or plan ads (pages are created with them).</td></tr>`);
+  el("lead-table").innerHTML = `<tr><th>When</th><th>Who</th><th>Wants</th><th>Source</th><th>Status</th></tr>` +
+    (leads.length ? leads.map((l) => `<tr><td class="small">${esc(l.at.slice(0, 16).replace("T", " "))}</td>
+      <td>${esc(l.name)}<div class="small muted">${esc(l.organisation || "")} · ${esc(l.country || "")}</div><div class="small">${esc(l.email)}${l.phone ? " · " + esc(l.phone) : ""}</div></td>
+      <td>${words(l.category)}${l.quantity ? " × " + esc(l.quantity) : ""}<div class="small muted">${esc(l.message.slice(0, 160))}</div></td>
+      <td class="small">${esc(l.platform)}${l.variant ? "<br>" + esc(l.variant) : ""}${Object.keys(l.conversions_sent || {}).length ? '<br><span class="muted">reported to platform</span>' : ""}</td>
+      <td>${words(l.status)}</td></tr>`).join("") : `<tr><td class="empty" colspan="5">No enquiries yet.</td></tr>`);
+}
+el("page-publish").onclick = () => act(() => api("/api/pages", { method: "POST", body: JSON.stringify({ product_category: el("page-cat").value, country: el("page-country").value.trim() }) }), "Page published").then(loadLeads);
+
+// ------------------------------------------------------------------ learning
+function armTable(title, arms) {
+  if (!arms || !arms.length) return "";
+  return `<tr><td colspan="5" class="label" style="padding-top:10px"><b>${esc(title)}</b></td></tr>` + arms.map((a) => `<tr><td>${words(a.option)}</td>
+    <td>${a.successes} / ${a.trials}</td><td>${pct(a.rate)}</td><td class="small muted">${pct(a.interval[0])} – ${pct(a.interval[1])}</td><td>${pct(a.p_best)}</td></tr>`).join("");
+}
+async function loadLearning(refresh = false) {
+  const d = await api("/api/learning" + (refresh ? "?refresh=true" : ""));
+  const cal = d.calibration || {}; const sc = d.scoring || {};
+  el("learn-summary").innerHTML = `<div class="small">Scoring weights: <b>${sc.active_version ? "learned v" + sc.active_version : "defaults"}</b>
+    ${cal.decision ? " · last refit: " + esc(cal.decision) : ""}${d.rollback && d.rollback.rollback ? " · live check: " + esc(d.rollback.rollback) : ""}</div>
+    ${(d.observations || []).length ? `<ul style="margin-top:6px">${d.observations.map((o) => `<li>${esc(o)}</li>`).join("")}</ul>` : ""}
+    <div class="scroll" style="margin-top:8px"><table><tr><th>Factor</th><th>Weight</th></tr>${Object.entries(sc.weights || {}).map(([k, v]) => `<tr><td>${words(k)}</td><td>${Number(v).toFixed(3)}</td></tr>`).join("")}</table></div>`;
+  const head = `<tr><th>Option</th><th>Successes / tries</th><th>Rate</th><th>Likely range</th><th>Chance best</th></tr>`;
+  el("learn-body").innerHTML = CATEGORIES.map((c) => {
+    const e = (d.email || {})[c] || {}; const a = (d.ads || {})[c] || {};
+    const body = armTable("E-mail angle (positive replies per first e-mail)", e.angle) + armTable("E-mail subject style", e.subject_style)
+      + armTable("Google ad angle (enquiries per click)", a.google) + armTable("Meta ad angle (enquiries per click)", a.meta)
+      + armTable("Supplier regions (quotes per supplier found)", (d.suppliers || {})[c]);
+    return body ? `<section class="scroll" style="margin-bottom:14px"><h2>${words(c)}</h2><table>${head}${body}</table></section>` : "";
+  }).join("");
+}
+el("learn-refresh").onclick = () => loadLearning(true).catch((e) => toast("Failed: " + e.message));
+el("learn-rollback").onclick = () => { if (confirm("Go back to the previous scoring weights?")) act(() => api("/api/learning/rollback", { method: "POST", body: JSON.stringify({ reason: "operator rollback" }) }), "Scoring weights rolled back").then(() => loadLearning(true)); };
+
 // ------------------------------------------------------------------ refresh loop
 async function loadTab() {
   try {
@@ -464,6 +594,9 @@ async function loadTab() {
     else if (activeTab === "catalogue") await loadCatalogue();
     else if (activeTab === "suppliers") await loadSuppliers();
     else if (activeTab === "licences") await loadLicences();
+    else if (activeTab === "ads") await loadAds();
+    else if (activeTab === "leads") await loadLeads();
+    else if (activeTab === "learning") await loadLearning();
     else if (activeTab === "settings" && !el("commercial").value) await loadSettings();
   } catch (e) { toast("Could not load: " + e.message); }
 }
@@ -471,7 +604,7 @@ async function refresh() {
   try { state = await api("/api/state"); renderOverview(state); }
   catch (e) { toast("State unavailable: " + e.message); }
 }
-showTab(["overview", "reviews", "pipeline", "suppliers", "catalogue", "licences", "settings", "system"].includes(activeTab) ? activeTab : "overview");
+showTab(["overview", "reviews", "pipeline", "suppliers", "ads", "leads", "learning", "catalogue", "licences", "settings", "system"].includes(activeTab) ? activeTab : "overview");
 refresh();
 setInterval(refresh, 20000);
 </script>

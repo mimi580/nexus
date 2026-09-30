@@ -287,6 +287,24 @@ def supplier_followups(ctx: RunContext) -> dict:
     return {"tasks_created": created, "closed": closed}
 
 
+def ads_sync_job(ctx: RunContext) -> dict:
+    from app.ads.agents import ads_active, ads_sync
+
+    return ads_sync(ctx) if ads_active(ctx) else {"skipped": "ads disabled"}
+
+
+def ads_plan(ctx: RunContext) -> dict:
+    from app.ads.agents import ads_plan_job
+
+    return ads_plan_job(ctx)
+
+
+def ads_optimize(ctx: RunContext) -> dict:
+    from app.ads.agents import ads_optimize_job
+
+    return ads_optimize_job(ctx)
+
+
 DEFAULT_JOBS = {
     "market_research_refresh": (refresh_market_research, 7 * 24 * 3600),
     "process_inbound": (process_inbound, 900),
@@ -300,4 +318,7 @@ DEFAULT_JOBS = {
     "notify_reviews": (notify_reviews, 900),
     "supplier_research_refresh": (supplier_research_refresh, 7 * 24 * 3600),
     "supplier_followups": (supplier_followups, 3600),
+    "ads_sync": (ads_sync_job, 6 * 3600),
+    "ads_plan": (ads_plan, 7 * 24 * 3600),
+    "ads_optimize": (ads_optimize, 24 * 3600),
 }

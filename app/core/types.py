@@ -106,6 +106,8 @@ class ActionKind(StrEnum):
     SEND_FOLLOWUP = "send_followup"
     SEND_REPLY = "send_reply"  # answering a buyer: quotes, RFQ responses, information
     SEND_SUPPLIER_RFQ = "send_supplier_rfq"  # asking a supplier for a quotation (buy side; never an order)
+    SEND_ACKNOWLEDGEMENT = "send_acknowledgement"  # templated receipt of an enquiry someone sent us; no prices
+    LAUNCH_AD_CAMPAIGN = "launch_ad_campaign"  # starts ad spend
     CRM_WRITE = "crm_write"
     FINANCIAL_COMMITMENT = "financial_commitment"
     LEGAL_COMMITMENT = "legal_commitment"

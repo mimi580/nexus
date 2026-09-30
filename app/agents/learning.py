@@ -1,7 +1,8 @@
-"""Outcome measurement and versioned strategy experiments.
+"""Outcome measurement and the weekly learning pass.
 
-Strategy changes are data, never code: a new Strategy row is proposed,
-activated, measured and can be rolled back.
+Strategy changes are data, never code: a new Strategy row is activated only
+when it measurably predicts better, and is rolled back automatically if it
+does worse live (app/learning/loop.py).
 """
 
 from __future__ import annotations
@@ -14,15 +15,7 @@ from app.agents.base import BaseAgent
 from app.core.context import RunContext
 from app.core.interfaces import AgentResult
 from app.core.types import ModelTier, OpportunityStage
-from app.database.models import (
-    Company,
-    Experiment,
-    Interaction,
-    Message,
-    Opportunity,
-    Outcome,
-    Strategy,
-)
+from app.database.models import Company, Interaction, Message, Opportunity
 
 
 POSITIVE_CATEGORIES = ("interested", "information_request", "price_request", "rfq", "negotiation")
@@ -106,75 +99,45 @@ def metrics(ctx: RunContext, window_days: int = 30) -> dict:
 
 
 class LearningAgent(BaseAgent):
+    """Weekly: refit the scoring model (or roll it back), and publish what NEXUS has learned.
+
+    The day-to-day learning happens at each decision (see app/learning/loop.py):
+    this agent does the slower, versioned part and writes the snapshot the
+    dashboard's Learning tab shows.
+    """
+
     name = "learning"
     task_type = "learning_review"
     tier = ModelTier.REASONING
     complexity = 0.75
 
     def run(self, ctx: RunContext, task_input: dict) -> AgentResult:
+        from app.learning import loop
+
         window = int(task_input.get("window_days", 30))
         data = metrics(ctx, window)
-        _, cost = self.ask(
-            ctx,
-            "Review these commercial results and suggest bounded strategy changes. "
-            "Return {'observations':[],'recommended_changes':[],'confidence'}.",
-            {"metrics": data},
-        )
-
-        proposals: list[dict] = []
-        # Deterministic guardrails decide what actually changes.
-        if data["messages_sent"] >= 10 and data["qualified_response_rate"] < 0.05:
-            proposals.append({"name": "scoring", "change": {"threshold": 0.55}, "why": "low qualified response rate"})
-        weakest = sorted(data["by_product"].items(), key=lambda kv: kv[1]["avg_score"])
-        if len(weakest) > 1 and weakest[0][1]["avg_score"] < 0.35:
-            proposals.append(
-                {
-                    "name": "product_focus",
-                    "change": {"deprioritise": weakest[0][0]},
-                    "why": "persistently low opportunity scores",
-                }
+        rollback = loop.check_rollback(ctx)
+        calibration = loop.calibrate_scoring(ctx) if rollback.get("rollback") != "rolled back" else {
+            "decision": "skipped this week: a rollback just happened"}
+        snap = loop.snapshot(ctx)
+        snap.update(metrics=data, calibration=calibration, rollback=rollback)
+        observations, cost = [], 0.0
+        try:
+            review, cost = self.ask(
+                ctx,
+                "Summarise, for the operator, what these results and learned preferences say, in at most five "
+                "plain observations. Do not recommend changes the data does not support. "
+                "Return {'observations':[]}.",
+                {"metrics": data, "calibration": calibration, "email": snap["email"], "ads": snap["ads"]},
             )
-
-        created = []
-        for proposal in proposals:
-            current = ctx.session.scalar(
-                select(Strategy)
-                .where(Strategy.name == proposal["name"], Strategy.active.is_(True))
-                .order_by(Strategy.version.desc())
-            )
-            next_version = (current.version + 1) if current else 1
-            strategy = Strategy(
-                name=proposal["name"],
-                version=next_version,
-                parameters=proposal["change"],
-                active=False,
-                rationale=proposal["why"],
-            )
-            ctx.session.add(strategy)
-            ctx.session.flush()
-            ctx.session.add(
-                Experiment(
-                    strategy_name=proposal["name"],
-                    control_version=current.version if current else 0,
-                    variant_version=next_version,
-                    status="proposed",
-                    metric="qualified_response_rate",
-                    result={"baseline": data["qualified_response_rate"]},
-                )
-            )
-            created.append({"strategy": proposal["name"], "version": next_version})
-        ctx.session.flush()
-
+            observations = [str(o) for o in (review.get("observations") or [])][:5]
+        except Exception as exc:  # noqa: BLE001 - the narrative is optional; the learning is not
+            observations = [f"narrative unavailable: {exc}"]
+        snap["observations"] = observations
+        loop.store_snapshot(ctx, snap)
         ctx.audit.record(
-            "learning_review",
-            summary=f"metrics reviewed over {window} days",
-            decision="allow",
-            task_id=ctx.task_id,
-            metrics=data,
-            proposals=created,
+            "learning_review", summary=f"scoring: {calibration.get('decision')}; rollback check: {rollback.get('rollback')}",
+            decision="allow", task_id=ctx.task_id, metrics=data, calibration=calibration, rollback=rollback,
         )
-        return self.ok(
-            output={"metrics": data, "proposals": created},
-            cost_usd=cost,
-            notes=[f"{len(created)} strategy proposals recorded (inactive until activated)"],
-        )
+        return self.ok(output={"metrics": data, "calibration": calibration, "rollback": rollback},
+                       cost_usd=cost, notes=[str(calibration.get("decision")), str(rollback.get("rollback"))])

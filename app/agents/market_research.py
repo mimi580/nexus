@@ -93,7 +93,11 @@ class MarketResearchAgent(BaseAgent):
         ctx.session.flush()
         self.persist_evidence(ctx, evidence)
 
-        scored.sort(key=lambda m: m["score"], reverse=True)
+        from app.learning.loop import learned_market_score
+
+        for m in scored:  # rank by research blended with how outreach there has actually gone
+            m["learned_score"] = learned_market_score(ctx.session, category, m["country"], m["score"])
+        scored.sort(key=lambda m: m["learned_score"], reverse=True)
         top = scored[:top_n]
         return self.ok(
             output={"ranked_markets": scored, "selected": top},

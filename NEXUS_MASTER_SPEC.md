@@ -11,7 +11,8 @@ agents must reuse the same core platform.
 
 **Initial products:** refurbished laptops; used/refurbished iPhones;
 medical equipment; pharmaceutical products; servers/IT equipment.
-**Budget:** hard maximum USD 200/month. **Autonomy:** fully autonomous
+**Budget:** hard maximum USD 500/month (raised from 200 by the owner on
+2026-09-30 to fund advertising; operator-configurable, always a hard stop). **Autonomy:** fully autonomous
 within deterministic policy, compliance, financial, security and
 communication boundaries.
 
@@ -204,7 +205,9 @@ check → permitted execution or block/escalate → audit.**
 
 ## 15. Budget
 
-Hard maximum: **USD 200/month**. Planning allocation: infrastructure
+Hard maximum: **USD 500/month** (owner decision 2026-09-30; configurable,
+always enforced as a hard stop). Advertising: USD 300 of it. Planning
+allocation for the rest: infrastructure
 \$20; primary AI \$45; secondary AI \$20; research/data \$30; email
 \$25; database/storage \$5; browser/automation \$15; testing/misc \$10;
 reserve \$30. These are ceilings/planning targets, not required

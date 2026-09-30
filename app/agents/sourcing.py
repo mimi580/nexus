@@ -41,6 +41,9 @@ class SourcingAgent(BaseAgent):
             reasons=[reason],
         )
         next_tasks = []
+        if (opportunity.qualification or {}).get("inbound"):
+            # Someone asked us: answer them now (without a price) rather than wait for the gap.
+            next_tasks.append({"agent": "inbound_quote", "input": {"opportunity_id": opportunity.id}, "priority": 95})
         if marker == AWAITING_OFFER:
             # Go and find suppliers for this line now (at most once a day).
             next_tasks.append({
@@ -204,7 +207,7 @@ class SourcingAgent(BaseAgent):
         ]
         self.persist_evidence(ctx, evidence)
 
-        if economics.gross_margin_pct_high < min_margin:
+        if economics.gross_margin_pct_high < min_margin and not qual.get("inbound"):
             ctx.memory.transition(
                 opportunity,
                 OpportunityStage.LOST,
@@ -217,7 +220,8 @@ class SourcingAgent(BaseAgent):
                 notes=["dropped on economics"],
             )
 
-        ctx.memory.transition(opportunity, OpportunityStage.TARGETED, "supply matched and economics acceptable")
+        if not qual.get("inbound"):
+            ctx.memory.transition(opportunity, OpportunityStage.TARGETED, "supply matched and economics acceptable")
         return self.ok(
             output={"economics": opportunity.economics, "pursued": True, "regulatory_checked": regulatory_checked},
             cost_usd=cost,
@@ -256,21 +260,33 @@ class SalesStrategyAgent(BaseAgent):
                 "country": company.country if company else None,
             },
         )
+        # The message angle and subject style are chosen from observed reply rates (Thompson sampling),
+        # not by the model: this is where outreach learns what works per product line.
+        from app.core.types import REGULATED_CATEGORIES
+        from app.learning.loop import EMAIL_ANGLES, choose_email_variant, outreach_priority
+
+        variant = choose_email_variant(ctx.session, opportunity.product_category, opportunity.id,
+                                       opportunity.product_category in {c.value for c in REGULATED_CATEGORIES})
+        data = {**data, "message_angle": EMAIL_ANGLES[variant["angle"]], "variant": variant}
         qual = dict(opportunity.qualification or {})
         qual["strategy"] = data
         opportunity.qualification = qual
+        priority = outreach_priority(ctx.session, opportunity.product_category, company.country if company else None,
+                                     int(task_input.get("outreach_priority", 54)), opportunity.id)
         ctx.session.flush()
         return self.ok(
             output=data,
             cost_usd=cost,
             next_tasks=[
+                {"agent": "inbound_quote", "input": {"opportunity_id": opportunity.id}, "priority": 95}
+                if qual.get("inbound") else
                 {
                     "agent": "outreach",
                     "input": {
                         "opportunity_id": opportunity.id,
                         "regulatory_checked": bool(task_input.get("regulatory_checked", False)),
                     },
-                    "priority": 54,
+                    "priority": priority,
                 }
             ],
         )

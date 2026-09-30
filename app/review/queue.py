@@ -40,7 +40,7 @@ class ReviewError(ValueError):
     pass
 
 
-EXECUTABLE_KINDS = {"outreach_approval", "reply_approval", "supplier_rfq_approval", "supplier_quote"}
+EXECUTABLE_KINDS = {"outreach_approval", "reply_approval", "supplier_rfq_approval", "supplier_quote", "ad_campaign"}
 
 
 def classify(event_type: str, action_kind: str | None) -> str:
@@ -50,6 +50,8 @@ def classify(event_type: str, action_kind: str | None) -> str:
         return "supplier_rfq_approval"
     if action_kind == "activate_offers":
         return "supplier_quote"
+    if action_kind == "launch_ad_campaign":
+        return "ad_campaign"
     if action_kind in SEND_KINDS:
         return "outreach_approval"
     if action_kind in {"financial_commitment", "legal_commitment"}:
@@ -208,6 +210,13 @@ def decide(
                          actor=actor, decision="allow", review_id=item.id, note=note, **follow_on)
         session.flush()
         return item
+    if item.kind == "ad_campaign" and item.status == "rejected":
+        from app.database.models import AdCampaign
+
+        campaign = session.get(AdCampaign, (item.action_payload or {}).get("campaign_id") or "")
+        if campaign is not None and campaign.status in ("proposed", "awaiting_approval"):
+            campaign.status = "rejected"
+            campaign.status_reason = f"rejected in review: {note}" if note else "rejected in review"
     if item.status == "approved":
         follow_on = _requeue_send(ctx, item)
     elif item.status == "rejected" and opportunity is not None:
@@ -320,5 +329,14 @@ def record_outcome(
         "outcome_reported", summary=f"{opportunity_id} {result}", actor=actor, decision="allow",
         revenue_usd=revenue_usd, margin_usd=margin_usd,
     )
+    from app.database.models import Lead
+    from app.site.leads import sync_lead_status
+
+    sync_lead_status(ctx.session, opportunity)
+    lead = ctx.session.scalar(select(Lead).where(Lead.opportunity_id == opportunity.id))
+    if result == "won" and lead is not None and lead.platform in ("google", "meta"):
+        ctx.tasks.create_task(agent="conversion_upload", objective_id=None,
+                              task_input={"lead_id": lead.id, "event": "won", "value_usd": revenue_usd},
+                              priority=60, idempotency_key=stable_key("conversion_upload", lead.id, "won"))
     ctx.session.flush()
     return outcome

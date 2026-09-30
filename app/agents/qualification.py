@@ -107,7 +107,9 @@ class OpportunityScoringAgent(BaseAgent):
             )
             .order_by(MarketAssessment.assessed_at.desc())
         )
-        return float(row.score) if row else 0.4
+        from app.learning.loop import learned_market_score
+
+        return learned_market_score(ctx.session, category, country, float(row.score) if row else 0.4)
 
     def run(self, ctx: RunContext, task_input: dict) -> AgentResult:
         opportunity = ctx.session.get(Opportunity, task_input["opportunity_id"])
@@ -137,20 +139,25 @@ class OpportunityScoringAgent(BaseAgent):
             "time_to_close": TIMING_SCORES.get(str(qual.get("timing", "unknown")), 0.3),
         }
 
+        from app.learning.loop import active_scoring, active_weights
+
+        weights = active_weights(ctx.session)  # learned weekly from which contacted deals replied
+        strategy = active_scoring(ctx.session)
         total = 0.0
         contributions = {}
-        for key, weight in SCORE_WEIGHTS.items():
+        for key, weight in weights.items():
             value = components[key]
             contribution = value * weight if weight > 0 else (1.0 - value) * abs(weight)
             contributions[key] = round(contribution, 5)
             total += contribution
-        denominator = sum(abs(w) for w in SCORE_WEIGHTS.values())
+        denominator = sum(abs(w) for w in weights.values()) or 1.0
         score = round(max(0.0, min(1.0, total / denominator)), 4)
 
         opportunity.score = score
         opportunity.score_breakdown = {
             "components": components,
-            "weights": SCORE_WEIGHTS,
+            "weights": weights,
+            "weights_version": strategy.version if strategy else 0,
             "contributions": contributions,
             "threshold": self.threshold,
         }

@@ -198,4 +198,7 @@ class ReplyAgent(BaseAgent):
         if message.status != "sent":
             return self.fail(f"send failed: {message.error}")
         ctx.memory.transition(opportunity, OpportunityStage.NEGOTIATION, "operator-approved reply sent", actor="operator")
+        from app.site.leads import sync_lead_status
+
+        sync_lead_status(ctx.session, opportunity)
         return self.ok(output={"sent": True, "message_id": message.id}, notes=[f"reply sent to {contact.email}"])

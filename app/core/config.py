@@ -9,7 +9,11 @@ from typing import Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-HARD_MONTHLY_CEILING_USD = 200.0  # Spec section 15. Code may lower it, never raise it.
+# Default monthly ceiling. The operator sets the actual ceiling with
+# BUDGET_MONTHLY_LIMIT_USD; whatever it is, it is a hard stop that no paid
+# action (AI, research, e-mail, ads) can exceed. Raised from 200 to 500 by the
+# operator on 2026-09-30 to fund advertising.
+HARD_MONTHLY_CEILING_USD = 500.0
 
 DEFAULT_CATEGORY_LIMITS = {
     "infrastructure": 20.0,
@@ -21,10 +25,15 @@ DEFAULT_CATEGORY_LIMITS = {
     "automation": 15.0,
     "testing_misc": 10.0,
     "reserve": 30.0,
+    "ads": 300.0,  # advertising spend on Google and Meta (reported by the platforms)
 }
 
 
 SECRET_FIELDS = (
+    "google_ads_developer_token",
+    "google_ads_client_secret",
+    "google_ads_refresh_token",
+    "meta_access_token",
     "anthropic_api_key",
     "openai_api_key",
     "email_api_key",
@@ -101,6 +110,37 @@ class Settings(BaseSettings):
     operator_email: str | None = None
     notify_max_per_hour: int = 10
 
+    # --- public site, landing pages, inbound leads ----------------------------
+    public_site_url: str | None = None  # where landing pages are served; defaults to PUBLIC_BASE_URL
+    whatsapp_number: str | None = None  # international format digits, e.g. 254712345678
+    lead_response_promise: str = "within one business day"
+
+    # --- advertising ------------------------------------------------------------
+    ads_enabled: bool = False
+    ads_require_launch_approval: bool = True  # new campaigns wait for you; optimisation is automatic
+    ads_default_daily_budget_usd: float = 5.0
+    ads_min_daily_budget_usd: float = 1.0
+    ads_target_cost_per_lead_usd: float = 15.0
+    ads_max_campaigns_per_platform: int = 6
+    ads_prune_min_clicks: int = 150  # a variant needs this many clicks before it can be judged
+    ads_fx_rates_json: str | None = None  # {"KES": 129.0}: account-currency units per USD
+    google_ads_developer_token: str | None = None
+    google_ads_client_id: str | None = None
+    google_ads_client_secret: str | None = None
+    google_ads_refresh_token: str | None = None
+    google_ads_customer_id: str | None = None
+    google_ads_login_customer_id: str | None = None
+    google_ads_api_version: str = "v25"
+    google_ads_currency: str = "USD"
+    google_ads_conversion_action_lead: str | None = None  # numeric conversion action id
+    google_ads_conversion_action_won: str | None = None
+    meta_access_token: str | None = None
+    meta_ad_account_id: str | None = None  # digits only, without act_
+    meta_page_id: str | None = None
+    meta_pixel_id: str | None = None
+    meta_api_version: str = "v26.0"
+    meta_ad_account_currency: str = "USD"
+
     # --- dashboard / API access ---------------------------------------------
     dashboard_username: str | None = None
     dashboard_password: str | None = None
@@ -119,8 +159,11 @@ class Settings(BaseSettings):
 
     @field_validator("budget_monthly_limit_usd")
     @classmethod
-    def _cap_budget(cls, v: float) -> float:
-        return min(float(v), HARD_MONTHLY_CEILING_USD)
+    def _positive_budget(cls, v: float) -> float:
+        value = float(v)
+        if value <= 0:
+            raise ValueError("BUDGET_MONTHLY_LIMIT_USD must be positive")
+        return value
 
     @property
     def category_limits(self) -> dict[str, float]:
@@ -135,6 +178,30 @@ class Settings(BaseSettings):
     @property
     def has_live_model_credentials(self) -> bool:
         return bool(self.anthropic_api_key or self.openai_api_key)
+
+    @property
+    def fx_rates(self) -> dict[str, float]:
+        try:
+            parsed = json.loads(self.ads_fx_rates_json) if self.ads_fx_rates_json else {}
+        except json.JSONDecodeError:
+            parsed = {}
+        rates = {str(k).upper(): float(v) for k, v in parsed.items() if float(v) > 0}
+        rates["USD"] = 1.0
+        return rates
+
+    @property
+    def google_ads_configured(self) -> bool:
+        return all((self.google_ads_developer_token, self.google_ads_client_id, self.google_ads_client_secret,
+                    self.google_ads_refresh_token, self.google_ads_customer_id))
+
+    @property
+    def meta_ads_configured(self) -> bool:
+        return all((self.meta_access_token, self.meta_ad_account_id, self.meta_page_id))
+
+    @property
+    def site_url(self) -> str | None:
+        base = self.public_site_url or self.public_base_url
+        return base.rstrip("/") if base else None
 
     @property
     def notify_channel_list(self) -> list[str]:
@@ -162,6 +229,13 @@ class Settings(BaseSettings):
             warnings.append("IMAP not configured: replies, bounces and opt-outs will not be read automatically")
         if not self.public_base_url:
             warnings.append("PUBLIC_BASE_URL not set: emails carry a reply-to-unsubscribe line but no one-click link")
+        if self.ads_enabled:
+            if not (self.google_ads_configured or self.meta_ads_configured):
+                warnings.append("ADS_ENABLED but neither Google Ads nor Meta credentials are complete: no ads will run")
+            if not self.site_url:
+                warnings.append("ADS_ENABLED without PUBLIC_SITE_URL/PUBLIC_BASE_URL: ads have no landing page address")
+            for currency in {self.google_ads_currency.upper(), self.meta_ad_account_currency.upper()} - set(self.fx_rates):
+                warnings.append(f"ad account currency {currency} has no rate in ADS_FX_RATES_JSON: spend cannot be converted")
         if self.notify_channel_list == ["log"]:
             warnings.append("NOTIFY_CHANNELS=log only: you will not be alerted about items awaiting review")
         return {"missing": missing, "warnings": warnings}

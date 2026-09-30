@@ -37,7 +37,8 @@ Rule = Callable[[ActionRequest, PolicyContext], PolicyResult | None]
 
 # Every kind of outbound message. Opt-out, duplicate, licence and fact checks
 # apply to all of them; rate limits and follow-up caps only to unsolicited mail.
-SEND_KINDS = (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP, ActionKind.SEND_REPLY, ActionKind.SEND_SUPPLIER_RFQ)
+SEND_KINDS = (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP, ActionKind.SEND_REPLY, ActionKind.SEND_SUPPLIER_RFQ,
+              ActionKind.SEND_ACKNOWLEDGEMENT)
 # Messages to buyers: licence scope and regulatory checks apply to these.
 BUYER_SEND_KINDS = (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP, ActionKind.SEND_REPLY)
 
@@ -300,6 +301,24 @@ def rule_fact_validation(req: ActionRequest, ctx: PolicyContext) -> PolicyResult
     return None
 
 
+def rule_ads(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
+    """Advertising: never pharma, never with failing copy, and new campaigns wait for you by default."""
+    if req.kind != ActionKind.LAUNCH_AD_CAMPAIGN:
+        return None
+    from app.ads.compliance import ad_allowed
+
+    if ctx.settings.nexus_mode == "production" and not ctx.settings.ads_enabled:
+        return _block("R-ADS-00", "ADS_ENABLED is false")
+    if not ad_allowed(req.payload.get("product_category") or ""):
+        return _block("R-ADS-01", "this product line is never advertised")
+    issues = req.payload.get("compliance_issues") or []
+    if issues:
+        return _block("R-ADS-02", "ad copy failed the checks: " + "; ".join(issues[:5]))
+    if ctx.settings.ads_require_launch_approval:
+        return _escalate("R-ADS-03", "new ad campaigns wait for your approval (ADS_REQUIRE_LAUNCH_APPROVAL)", RiskLevel.MEDIUM)
+    return None
+
+
 def rule_budget(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
     if req.estimated_cost_usd <= 0:
         return None
@@ -328,6 +347,7 @@ DEFAULT_RULES: list[Rule] = [
     rule_supplier_rfq_limits,
     rule_followup_cap,
     rule_fact_validation,
+    rule_ads,
     rule_budget,
 ]
 

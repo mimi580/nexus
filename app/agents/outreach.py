@@ -74,9 +74,14 @@ class OutreachAgent(BaseAgent):
     def _compose(self, ctx: RunContext, opportunity: Opportunity, company: Company, contact: Contact, step: int):
         strategy = (opportunity.qualification or {}).get("strategy", {})
         quantity = (opportunity.economics or {}).get("quantity")
+        from app.learning.loop import SUBJECT_STYLES
+
+        style = (strategy.get("variant") or {}).get("subject_style")
         prompt = (
             "Write a short, accurate, personalised business email. Assert only facts supplied in context. "
-            "Include an opt-out line. Return {'subject','body','personalized'}."
+            "Lead with the message angle. "
+            + (f"Subject line style: {SUBJECT_STYLES[style]}. " if step == 0 and style in SUBJECT_STYLES else "")
+            + "Include an opt-out line. Return {'subject','body','personalized'}."
         )
         return self.ask(
             ctx,
@@ -193,6 +198,10 @@ class OutreachAgent(BaseAgent):
         )
         if message.status != "sent":
             return self.fail(f"send failed: {message.error}", cost_usd=cost)
+        # Credit replies to the variant that produced this message (the learning loop reads it).
+        variant = (opportunity.qualification or {}).get("strategy", {}).get("variant")
+        if variant:
+            message.variant = {**variant, "step": step}
 
         ctx.memory.transition(opportunity, OpportunityStage.OUTREACH, "first contact sent")
         cadence = int((opportunity.qualification or {}).get("strategy", {}).get("followup_cadence_days", 4))

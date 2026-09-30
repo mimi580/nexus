@@ -14,6 +14,7 @@ from sqlalchemy import (
     Index,
     Integer,
     JSON,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -304,6 +305,9 @@ class Message(Base, TimestampMixin):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     thread_ref: Mapped[str | None] = mapped_column(String(300), index=True)
     from_address: Mapped[str | None] = mapped_column(String(200))
+    # Which tested variant produced this message (message angle, subject style),
+    # so replies can be credited to it by the learning loop.
+    variant: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     __table_args__ = (Index("ix_messages_dedupe_direction", "dedupe_key", "direction"),)
 
@@ -494,6 +498,120 @@ class Notification(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(20), default="sent", index=True)
     error: Mapped[str | None] = mapped_column(Text)
     dedupe_key: Mapped[str | None] = mapped_column(String(120), index=True)
+
+
+class LandingPage(Base, TimestampMixin):
+    """A public page for one product line in one market; where ads and links land."""
+
+    __tablename__ = "landing_pages"
+    id: Mapped[str] = _pk("lpg")
+    slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    product_category: Mapped[str] = mapped_column(String(50), index=True)
+    country: Mapped[str] = mapped_column(String(80), index=True)
+    language: Mapped[str] = mapped_column(String(10), default="en")
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)  # draft | published | retired
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    content: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    facts: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class PageEvent(Base, TimestampMixin):
+    __tablename__ = "page_events"
+    id: Mapped[str] = _pk("pev")
+    landing_page_id: Mapped[str] = mapped_column(String(40), index=True)
+    kind: Mapped[str] = mapped_column(String(20), index=True)  # view | whatsapp | enquiry
+    campaign_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    variant_key: Mapped[str | None] = mapped_column(String(80))
+    platform: Mapped[str | None] = mapped_column(String(20))
+    visitor_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+
+
+class Lead(Base, TimestampMixin):
+    """Someone who asked us for something: an enquiry from a landing page."""
+
+    __tablename__ = "leads"
+    id: Mapped[str] = _pk("led")
+    landing_page_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    campaign_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    variant_key: Mapped[str | None] = mapped_column(String(80))
+    platform: Mapped[str] = mapped_column(String(20), default="organic", index=True)
+    attribution: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # utm_*, gclid, fbclid, fbc
+    full_name: Mapped[str] = mapped_column(String(200))
+    organisation: Mapped[str | None] = mapped_column(String(300))
+    email: Mapped[str] = mapped_column(String(200), index=True)
+    phone: Mapped[str | None] = mapped_column(String(60))
+    country: Mapped[str | None] = mapped_column(String(80))
+    product_category: Mapped[str] = mapped_column(String(50), index=True)
+    quantity: Mapped[int | None] = mapped_column(Integer)
+    message: Mapped[str] = mapped_column(Text, default="")
+    consent: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(20), default="new", index=True)  # new | acknowledged | qualified | won | lost | spam
+    opportunity_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    visitor_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    conversions_sent: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class AdCampaign(Base, TimestampMixin):
+    __tablename__ = "ad_campaigns"
+    id: Mapped[str] = _pk("adc")
+    platform: Mapped[str] = mapped_column(String(20), index=True)  # google | meta
+    name: Mapped[str] = mapped_column(String(200))
+    product_category: Mapped[str] = mapped_column(String(50), index=True)
+    countries: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    language: Mapped[str] = mapped_column(String(10), default="en")
+    status: Mapped[str] = mapped_column(String(20), default="proposed", index=True)
+    daily_budget_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    landing_page_id: Mapped[str | None] = mapped_column(String(40))
+    targeting: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    external_ids: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    plan: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # rationale, evidence, checks
+    status_reason: Mapped[str | None] = mapped_column(Text)
+    launched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_optimized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AdVariant(Base, TimestampMixin):
+    __tablename__ = "ad_variants"
+    id: Mapped[str] = _pk("adv")
+    campaign_id: Mapped[str] = mapped_column(ForeignKey("ad_campaigns.id"), index=True)
+    key: Mapped[str] = mapped_column(String(80), index=True)
+    angle: Mapped[str | None] = mapped_column(String(60), index=True)
+    content: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)  # active | paused | removed
+    external_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    asset_id: Mapped[str | None] = mapped_column(String(40))
+    status_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class AdMetric(Base, TimestampMixin):
+    __tablename__ = "ad_metrics"
+    __table_args__ = (UniqueConstraint("campaign_id", "variant_key", "day", name="uq_ad_metrics_campaign_variant_day"),)
+    id: Mapped[str] = _pk("adm")
+    campaign_id: Mapped[str] = mapped_column(String(40), index=True)
+    variant_key: Mapped[str] = mapped_column(String(80), default="_campaign")
+    day: Mapped[date] = mapped_column(Date, index=True)
+    impressions: Mapped[int] = mapped_column(Integer, default=0)
+    clicks: Mapped[int] = mapped_column(Integer, default=0)
+    spend_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    spend_native: Mapped[float] = mapped_column(Float, default=0.0)
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    ledgered_usd: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class AdAsset(Base, TimestampMixin):
+    """An image for ads and pages: operator-uploaded photos or generated designs."""
+
+    __tablename__ = "ad_assets"
+    id: Mapped[str] = _pk("ast")
+    product_category: Mapped[str] = mapped_column(String(50), index=True)
+    kind: Mapped[str] = mapped_column(String(20), default="photo")  # photo | generated
+    filename: Mapped[str] = mapped_column(String(200))
+    content_type: Mapped[str] = mapped_column(String(60), default="image/png")
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    caption: Mapped[str] = mapped_column(String(300), default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    external_refs: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
 class AuditEvent(Base, TimestampMixin):

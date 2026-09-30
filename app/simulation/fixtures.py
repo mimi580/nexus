@@ -150,3 +150,35 @@ def sim_supplier_quote(category: str, rng) -> str:
         f"FOB, MOQ {moq} units, {available} units available, lead time {lead} days. "
         f"Payment: 30% deposit, balance before shipment. Documents: {docs}. Offer valid for 14 days."
     )
+
+
+# Catalogue seeded into the simulated world so product pages and ads have facts
+# to work from (a live deployment gets these from supplier quotes you approve).
+SIM_CATALOGUE = [
+    {"product_category": "refurbished_laptop", "product_name": "Dell Latitude 5490 i5 8GB 256GB SSD",
+     "condition": "Grade A refurbished", "unit_cost_low_usd": 165, "unit_cost_high_usd": 180, "moq": 20,
+     "lead_time_days": 14, "warranty": "6 months", "supplier_name": "Gulf ITAD Traders", "supplier_country": "United Arab Emirates",
+     "source": "simulated price list"},
+    {"product_category": "refurbished_laptop", "product_name": "Lenovo ThinkPad T480 i5 8GB 256GB SSD",
+     "condition": "Grade A refurbished", "unit_cost_low_usd": 175, "unit_cost_high_usd": 190, "moq": 20,
+     "lead_time_days": 14, "warranty": "6 months", "supplier_name": "Gulf ITAD Traders", "supplier_country": "United Arab Emirates",
+     "source": "simulated price list"},
+    {"product_category": "used_iphone", "product_name": "iPhone 12 64GB unlocked",
+     "condition": "Grade A used", "unit_cost_low_usd": 240, "unit_cost_high_usd": 255, "moq": 30,
+     "lead_time_days": 10, "warranty": "3 months", "supplier_name": "HK Mobile Wholesale", "supplier_country": "Hong Kong",
+     "source": "simulated price list"},
+    {"product_category": "server_it", "product_name": "Dell PowerEdge R740 2x Xeon Silver 128GB",
+     "condition": "Refurbished, tested", "unit_cost_low_usd": 1650, "unit_cost_high_usd": 1800, "moq": 1,
+     "lead_time_days": 21, "warranty": "12 months", "supplier_name": "EuroServer Remarketing", "supplier_country": "Netherlands",
+     "source": "simulated price list"},
+    {"product_category": "medical_equipment", "product_name": "Patient monitor, 5-parameter",
+     "condition": "New", "unit_cost_low_usd": 780, "unit_cost_high_usd": 820, "moq": 2, "lead_time_days": 30,
+     "warranty": "12 months", "supplier_name": "MedSource Export GmbH", "supplier_country": "Germany",
+     "documents": ["CE documentation on file"], "source": "simulated price list"},
+]
+SIM_PRICES = [
+    {"product_category": "refurbished_laptop", "unit_price_low_usd": 235, "unit_price_high_usd": 290, "basis": "simulated market survey", "source": "simulation"},
+    {"product_category": "used_iphone", "unit_price_low_usd": 310, "unit_price_high_usd": 360, "basis": "simulated market survey", "source": "simulation"},
+    {"product_category": "server_it", "unit_price_low_usd": 2300, "unit_price_high_usd": 2900, "basis": "simulated market survey", "source": "simulation"},
+    {"product_category": "medical_equipment", "unit_price_low_usd": 1100, "unit_price_high_usd": 1400, "basis": "simulated market survey", "source": "simulation"},
+]
