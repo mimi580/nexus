@@ -196,7 +196,7 @@
 const CATEGORIES = ["refurbished_laptop", "used_iphone", "medical_equipment", "pharmaceutical", "server_it"];
 const el = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const money = (n) => n == null ? "—" : "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const money = (n) => { if (n == null) return "—"; const v = Number(n); return "$" + v.toLocaleString(undefined, { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }); };
 const pct = (n) => ((n || 0) * 100).toFixed(1) + "%";
 const range = (r, f = money) => Array.isArray(r) ? (r[0] === r[1] ? f(r[0]) : `${f(r[0])} – ${f(r[1])}`) : "—";
 const words = (s) => esc(String(s || "").replace(/_/g, " "));

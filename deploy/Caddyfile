@@ -1,0 +1,12 @@
+# Automatic HTTPS (Let's Encrypt) for the NEXUS dashboard and API.
+# Point an A record for NEXUS_DOMAIN at this server before starting.
+{$NEXUS_DOMAIN} {
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+	reverse_proxy api:8000
+}

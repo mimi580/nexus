@@ -38,3 +38,48 @@ jobs:
         with:
           name: simulation-report
           path: simulation-report.json
+
+  stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: |
+          cp .env.example .env
+          python3 scripts/generate_secrets.py >> .env
+          echo "NEXUS_DOMAIN=localhost" >> .env
+      - name: Compose file is valid
+        run: docker compose config -q
+      - name: Build images
+        run: docker compose build api
+      - name: Start database, migrate (PostgreSQL), start API
+        run: docker compose up -d db migrate api
+      - name: API becomes healthy
+        run: |
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8000/health; then echo; exit 0; fi
+            sleep 3
+          done
+          docker compose logs api migrate
+          exit 1
+      - name: Dashboard requires the login
+        run: |
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/state)" = "401"
+          user=$(grep '^DASHBOARD_USERNAME=' .env | tail -1 | cut -d= -f2)
+          pass=$(grep '^DASHBOARD_PASSWORD=' .env | tail -1 | cut -d= -f2)
+          curl -fsS -u "$user:$pass" http://127.0.0.1:8000/api/state > /dev/null
+      - name: Doctor and one worker cycle against PostgreSQL
+        run: |
+          docker compose exec -T api python -m app.cli doctor
+          docker compose run --rm worker python scripts/worker.py --once
+          docker compose run --rm worker python scripts/worker.py --check-heartbeat || true
+      - name: Migration downgrade and upgrade on PostgreSQL
+        run: |
+          docker compose run --rm migrate alembic downgrade base
+          docker compose run --rm migrate alembic upgrade head
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.ids import normalize_domain, stable_key
@@ -260,7 +260,13 @@ class TaskStore:
 
     def next_pending(self, objective_id: str | None = None, now: datetime | None = None) -> Task | None:
         moment = now or utcnow()
-        stmt = select(Task).where(Task.status == "pending")
+        # Work for a paused or closed objective waits; work with no objective
+        # (inbound replies) always runs.
+        stmt = (
+            select(Task)
+            .outerjoin(Objective, Task.objective_id == Objective.id)
+            .where(Task.status == "pending", or_(Task.objective_id.is_(None), Objective.status == "active"))
+        )
         if objective_id:
             stmt = stmt.where(Task.objective_id == objective_id)
         stmt = stmt.order_by(Task.priority.desc(), Task.created_at.asc())

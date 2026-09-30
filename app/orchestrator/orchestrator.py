@@ -11,7 +11,7 @@ from app.core.context import RunContext
 from app.core.errors import BudgetExceeded, EscalationRequired, NexusError, PolicyViolation
 from app.core.ids import stable_key
 from app.core.logging import get_logger, log_event
-from app.core.types import ObjectiveStatus, ProductCategory
+from app.core.types import ProductCategory
 from app.database.models import Objective, Task
 from app.orchestrator.loop import LoopController, LoopLimits
 
@@ -171,11 +171,10 @@ class Orchestrator:
             self.run_once(task, controller)
 
         summary = controller.summary()
-        if objective_id:
-            objective = self.ctx.session.get(Objective, objective_id)
-            if objective is not None and self.ctx.tasks.pending_count(objective_id) == 0:
-                objective.status = ObjectiveStatus.COMPLETED.value
-            self.ctx.session.flush()
+        # Objectives are standing pipelines: an empty queue today does not end
+        # them (follow-ups, replies and weekly research keep arriving). Only the
+        # operator closes an objective.
+        self.ctx.session.flush()
         self.ctx.audit.record(
             "loop_finished", summary=summary["stop_reason"], objective_id=objective_id, decision="allow", **summary
         )

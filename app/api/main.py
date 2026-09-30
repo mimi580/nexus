@@ -112,6 +112,10 @@ class LicenseIn(BaseModel):
     coverage_countries: list[str] = Field(default_factory=list)
 
 
+class ObjectiveStatusIn(BaseModel):
+    status: str
+
+
 class DecisionIn(BaseModel):
     decision: str
     note: str = ""
@@ -259,6 +263,21 @@ def create_objective(payload: ObjectiveIn, _: str = Operator) -> dict:
             title=payload.title, product_categories=payload.product_categories, description=payload.description,
         )
         return {"id": objective.id, "title": objective.title, "status": objective.status}
+
+
+@app.post("/api/objectives/{objective_id}/status")
+def set_objective_status(objective_id: str, payload: ObjectiveStatusIn, actor: str = Operator) -> dict:
+    allowed = {"active", "paused", "completed", "abandoned"}
+    if payload.status not in allowed:
+        raise HTTPException(status_code=422, detail=f"status must be one of {sorted(allowed)}")
+    with session_scope() as session:
+        ctx = build_context(session)
+        objective = session.get(Objective, objective_id)
+        if objective is None:
+            raise HTTPException(status_code=404, detail="no such objective")
+        objective.status = payload.status
+        ctx.audit.record("objective_status", summary=f"{objective.title}: {payload.status}", decision="allow", actor=actor)
+        return {"id": objective.id, "status": objective.status}
 
 
 @app.post("/api/run")

@@ -1,9 +1,14 @@
+# NEXUS AI - production stack: PostgreSQL, migrations, API, worker, HTTPS proxy.
+# Usage (see docs/USER_GUIDE.md, "Deploying to a server"):
+#   cp .env.example .env && python3 scripts/generate_secrets.py >> .env   # then edit .env
+#   docker compose up -d --build
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: nexus
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: nexus
     volumes:
       - nexus-db:/var/lib/postgresql/data
@@ -11,44 +16,57 @@ services:
       test: ["CMD-SHELL", "pg_isready -U nexus"]
       interval: 10s
       timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      retries: 10
 
   migrate:
     build: { context: ., dockerfile: docker/Dockerfile }
     command: ["alembic", "upgrade", "head"]
     env_file: [.env]
     environment:
-      DATABASE_URL: postgresql+psycopg://nexus:${POSTGRES_PASSWORD:-nexus}@db:5432/nexus
+      DATABASE_URL: postgresql+psycopg://nexus:${POSTGRES_PASSWORD}@db:5432/nexus
     depends_on:
       db: { condition: service_healthy }
 
   api:
     build: { context: ., dockerfile: docker/Dockerfile }
+    restart: unless-stopped
     env_file: [.env]
     environment:
-      DATABASE_URL: postgresql+psycopg://nexus:${POSTGRES_PASSWORD:-nexus}@db:5432/nexus
-      REDIS_URL: redis://redis:6379/0
-    ports: ["8000:8000"]
+      DATABASE_URL: postgresql+psycopg://nexus:${POSTGRES_PASSWORD}@db:5432/nexus
+    expose: ["8000"]
+    ports: ["127.0.0.1:8000:8000"]   # reachable from the server itself only; the internet goes through caddy
     depends_on:
       migrate: { condition: service_completed_successfully }
 
   worker:
     build: { context: ., dockerfile: docker/Dockerfile }
-    command: ["python", "scripts/worker.py", "--interval", "300"]
+    restart: unless-stopped
+    command: ["python", "scripts/worker.py", "--interval", "${WORKER_INTERVAL_SECONDS:-300}"]
     env_file: [.env]
     environment:
-      DATABASE_URL: postgresql+psycopg://nexus:${POSTGRES_PASSWORD:-nexus}@db:5432/nexus
-      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+psycopg://nexus:${POSTGRES_PASSWORD}@db:5432/nexus
+    healthcheck:
+      test: ["CMD", "python", "scripts/worker.py", "--check-heartbeat"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     depends_on:
       migrate: { condition: service_completed_successfully }
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      NEXUS_DOMAIN: ${NEXUS_DOMAIN:?set NEXUS_DOMAIN in .env (e.g. nexus.yourdomain.com)}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [api]
+
 volumes:
   nexus-db:
+  caddy-data:
+  caddy-config:

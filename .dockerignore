@@ -1,0 +1,12 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+data/
+backups/
+**/__pycache__
+*.sqlite3
+.pytest_cache
+junit.xml
+simulation-report.json
