@@ -183,11 +183,12 @@ class MockProvider(BaseProvider):
         sender = ctx.get("sender_name", "NEXUS Sourcing")
         qty = ctx.get("quantity")
         qty_line = f"We can quote for quantities around {qty} units." if qty else "We can quote against your required quantity."
+        license_line = f"{ctx['license_statement']}. " if ctx.get("license_statement") else ""
         subject = f"{category.title()} supply for {company}"
         body = (
             f"Hello {contact},\n\n"
             f"I saw {signal} at {company} and thought a quick note was worth your time.\n\n"
-            f"We source {category} and can work to your specification. Our focus is {angle}. "
+            f"{license_line}We source {category} and can work to your specification. Our focus is {angle}. "
             f"{qty_line} Condition grading, warranty terms and lead times are confirmed in writing before any order.\n\n"
             f"If this is useful, reply and I will send a quotation against your requirement. "
             f"If it is not, reply with 'unsubscribe' and I will remove you from this list.\n\n"

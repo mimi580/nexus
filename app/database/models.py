@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -334,6 +335,30 @@ class ComplianceEvent(Base, TimestampMixin):
     severity: Mapped[str] = mapped_column(String(20), default="medium")
     detail: Mapped[str] = mapped_column(Text, default="")
     resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class License(Base, TimestampMixin):
+    """A trading licence held by the operator (importer, distributor, wholesaler).
+
+    Regulated outreach and transactions are only permitted in a country and
+    product category an active, unexpired licence covers.
+    """
+
+    __tablename__ = "licenses"
+    __table_args__ = (UniqueConstraint("country", "license_number", name="uq_license_country_number"),)
+    id: Mapped[str] = _pk("lic")
+    holder_name: Mapped[str] = mapped_column(String(200))
+    license_types: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    country: Mapped[str] = mapped_column(String(80), index=True)
+    issuing_authority: Mapped[str] = mapped_column(String(200))
+    license_number: Mapped[str] = mapped_column(String(120))
+    product_categories: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    scope_notes: Mapped[str] = mapped_column(Text, default="")
+    valid_from: Mapped[date | None] = mapped_column(Date)
+    expires_on: Mapped[date | None] = mapped_column(Date, index=True)
+    document_ref: Mapped[str | None] = mapped_column(String(500))
+    verification: Mapped[str] = mapped_column(String(20), default="user_provided")
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
 
 class AuditEvent(Base, TimestampMixin):

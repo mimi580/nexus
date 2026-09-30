@@ -19,6 +19,7 @@ from app.core.interfaces import ActionRequest, PolicyResult
 from app.core.types import ActionKind, Decision, REGULATED_CATEGORIES, RiskLevel, utcnow
 from app.database.models import Company, Contact, FollowUp, Message, SystemState
 from app.policies.fact_check import validate_message
+from app.policies.licenses import coverage
 
 SECRET_HINTS = ("api_key", "apikey", "password", "secret", "private_key", "authorization")
 
@@ -87,6 +88,27 @@ def rule_commitments(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | N
                 f"financial commitment of USD {amount:.2f} exceeds autonomous threshold {threshold:.2f}",
             )
     return None
+
+
+def rule_license(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
+    """Regulated trade only where an active licence covers the country and category.
+
+    Outreach outside licence coverage escalates (a partner route may exist);
+    a commitment outside coverage is blocked outright.
+    """
+    category = req.payload.get("product_category")
+    if category not in {c.value for c in REGULATED_CATEGORIES}:
+        return None
+    contact_kinds = (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP)
+    commitment_kinds = (ActionKind.FINANCIAL_COMMITMENT, ActionKind.LEGAL_COMMITMENT)
+    if req.kind not in contact_kinds + commitment_kinds:
+        return None
+    result = coverage(ctx.session, req.payload.get("country"), category, ctx.now.date())
+    if result.covered:
+        return None
+    if req.kind in commitment_kinds:
+        return _block("R-REG-05", f"regulated commitment outside licence coverage: {result.reason}")
+    return _escalate("R-REG-04", f"regulated contact outside licence coverage: {result.reason}")
 
 
 def rule_regulated(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
@@ -237,6 +259,7 @@ DEFAULT_RULES: list[Rule] = [
     rule_destructive,
     rule_commitments,
     rule_regulated,
+    rule_license,
     rule_opt_out,
     rule_duplicate,
     rule_rate_limits,

@@ -111,6 +111,44 @@ def daily_report(ctx: RunContext) -> dict:
     return data
 
 
+def license_expiry_check(ctx: RunContext) -> dict:
+    """Raise one compliance event per licence that is expiring or has expired."""
+    from app.database.models import ComplianceEvent
+    from app.policies.licenses import EXPIRY_WARNING_DAYS, expiring
+
+    today = ctx.now.date()
+    raised = []
+    for lic in expiring(ctx.session, today, EXPIRY_WARNING_DAYS):
+        expired = lic.expires_on < today
+        flag = "license_expired" if expired else "license_expiring"
+        marker = f"[{lic.id}]"
+        existing = ctx.session.scalar(
+            select(ComplianceEvent).where(
+                ComplianceEvent.flag == flag,
+                ComplianceEvent.resolved.is_(False),
+                ComplianceEvent.detail.contains(marker),
+            )
+        )
+        if existing is not None:
+            continue
+        days = (lic.expires_on - today).days
+        detail = (
+            f"{marker} {lic.country} licence {lic.license_number} "
+            + (f"expired on {lic.expires_on}" if expired else f"expires on {lic.expires_on} ({days} days)")
+        )
+        ctx.memory.record_compliance(
+            product_category=",".join(lic.product_categories or []),
+            flag=flag,
+            severity="high" if expired or days <= 14 else "medium",
+            detail=detail,
+        )
+        ctx.audit.record(
+            "license_alert", summary=detail, decision="escalate" if expired else "allow", license_id=lic.id
+        )
+        raised.append(lic.id)
+    return {"raised": raised}
+
+
 DEFAULT_JOBS = {
     "market_research_refresh": (refresh_market_research, 7 * 24 * 3600),
     "process_inbound": (process_inbound, 900),
@@ -119,4 +157,5 @@ DEFAULT_JOBS = {
     "daily_report": (daily_report, 24 * 3600),
     "weekly_learning": (weekly_learning, 7 * 24 * 3600),
     "monthly_budget_review": (monthly_budget_review, 30 * 24 * 3600),
+    "license_expiry_check": (license_expiry_check, 24 * 3600),
 }

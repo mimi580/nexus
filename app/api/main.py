@@ -25,6 +25,13 @@ from app.database.models import (
 )
 from app.database.session import create_all, session_scope
 from app.orchestrator.orchestrator import Orchestrator
+from app.policies.licenses import (
+    LicenseError,
+    add_license,
+    as_dict as lic_as_dict,
+    deactivate_license,
+    list_licenses,
+)
 from app.scheduler.scheduler import Scheduler
 
 DASHBOARD = Path(__file__).resolve().parent.parent / "dashboard" / "index.html"
@@ -43,6 +50,20 @@ class ObjectiveIn(BaseModel):
     title: str
     product_categories: list[str] = Field(default_factory=list)
     description: str = ""
+
+
+class LicenseIn(BaseModel):
+    holder_name: str
+    country: str
+    issuing_authority: str
+    license_number: str
+    license_types: list[str]
+    product_categories: list[str]
+    expires_on: str
+    valid_from: str | None = None
+    scope_notes: str = ""
+    document_ref: str | None = None
+    verification: str = "user_provided"
 
 
 class ControlIn(BaseModel):
@@ -116,6 +137,7 @@ def state() -> dict[str, Any]:
             "errors": errors,
             "compliance": compliance,
             "metrics": metrics(ctx, window_days=30),
+            "licenses": [lic_as_dict(lic, ctx.now.date()) for lic in list_licenses(session)],
         }
 
 
@@ -142,6 +164,43 @@ def run_pass(objective_id: str | None = None) -> dict:
         summary = Orchestrator(ctx).run(objective_id)
         jobs = Scheduler(ctx).run_due()
         return {"loop": summary, "jobs": jobs}
+
+
+@app.get("/api/licenses")
+def get_licenses(include_inactive: bool = False) -> list[dict]:
+    with session_scope() as session:
+        ctx = build_context(session)
+        return [lic_as_dict(lic, ctx.now.date()) for lic in list_licenses(session, include_inactive)]
+
+
+@app.post("/api/licenses", status_code=201)
+def create_license(payload: LicenseIn) -> dict:
+    with session_scope() as session:
+        ctx = build_context(session)
+        try:
+            lic = add_license(session, **payload.model_dump())
+        except LicenseError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        ctx.audit.record(
+            "license_added", summary=f"{lic.country} licence {lic.license_number}", decision="allow",
+            actor="operator", license_id=lic.id,
+        )
+        return lic_as_dict(lic, ctx.now.date())
+
+
+@app.post("/api/licenses/{license_id}/deactivate")
+def deactivate(license_id: str) -> dict:
+    with session_scope() as session:
+        ctx = build_context(session)
+        try:
+            lic = deactivate_license(session, license_id)
+        except LicenseError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        ctx.audit.record(
+            "license_deactivated", summary=f"{lic.country} licence {lic.license_number}", decision="allow",
+            actor="operator", license_id=lic.id,
+        )
+        return lic_as_dict(lic, ctx.now.date())
 
 
 @app.post("/api/control")

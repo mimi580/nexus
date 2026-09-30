@@ -61,6 +61,22 @@ SUPPLIERS = [
     dict(name="Nairobi Trade Partners Ltd", country="Kenya", categories=[ProductCategory.LAPTOP.value, ProductCategory.IPHONE.value], reliability=0.62, lead_time_days=7, payment_terms="net 15", documents=["invoice"]),
 ]
 
+# A fictional licence so simulated runs exercise both licensed (Kenya) and
+# unlicensed (Ghana, Nigeria) regulated markets. Never used outside simulation.
+LICENSES = [
+    dict(
+        holder_name="Simulated Operator Ltd",
+        country="Kenya",
+        issuing_authority="Simulated Regulator",
+        license_number="SIM-KE-0001",
+        license_types=["importer", "distributor"],
+        product_categories=[ProductCategory.MEDICAL.value, ProductCategory.PHARMA.value],
+        valid_from="2026-01-01",
+        expires_on="2027-12-31",
+        scope_notes="simulation fixture",
+    ),
+]
+
 UNIT_ECONOMICS = {
     ProductCategory.LAPTOP.value: dict(unit_cost=(190.0, 240.0), unit_price=(320.0, 360.0), typical_qty=40),
     ProductCategory.IPHONE.value: dict(unit_cost=(240.0, 300.0), unit_price=(370.0, 430.0), typical_qty=60),

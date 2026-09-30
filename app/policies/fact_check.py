@@ -41,6 +41,18 @@ RELATIONSHIP_TOKENS = [
     "we supply",
 ]
 
+LICENSE_TOKENS = [
+    "licensed importer",
+    "licensed distributor",
+    "licensed wholesaler",
+    "licensed pharmaceutical",
+    "licensed medical",
+    "import licence",
+    "import license",
+    "registered importer",
+    "registered distributor",
+]
+
 NUMBER_RE = re.compile(r"(?<![\w.])(?:usd\s*)?\$?\s?(\d[\d,]*(?:\.\d+)?)", re.IGNORECASE)
 YEAR_RE = re.compile(r"^(19|20)\d{2}$")
 
@@ -86,6 +98,11 @@ def validate_message(
         for token in RELATIONSHIP_TOKENS:
             if token in lowered:
                 unsupported.append(f"relationship_claim:{token}")
+
+    if not facts.get("license_verified"):
+        for token in LICENSE_TOKENS:
+            if token in lowered:
+                unsupported.append(f"license_claim:{token}")
 
     allowed_numbers = {_normalize_number(str(n)) for n in facts.get("numbers", [])}
     checked: list[str] = []

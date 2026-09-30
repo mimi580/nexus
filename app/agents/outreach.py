@@ -12,13 +12,27 @@ from app.agents.base import BaseAgent
 from app.core.context import RunContext
 from app.core.ids import stable_key
 from app.core.interfaces import ActionRequest, AgentResult
-from app.core.types import ActionKind, Decision, ModelTier, OpportunityStage, utcnow
+from app.core.types import ActionKind, Decision, ModelTier, OpportunityStage, REGULATED_CATEGORIES, utcnow
+from app.policies.licenses import coverage
 from app.database.models import Company, Contact, FollowUp, Message, Interaction, Opportunity
 
 SEND_COST_USD = 0.01  # per message, charged to the email category
 
 
-def allowed_facts_for(opportunity: Opportunity, quantity: int | None) -> dict:
+def license_statement(ctx: RunContext, opportunity: Opportunity, company: Company) -> str | None:
+    """A licence sentence the copy may use, only when the register covers this deal."""
+    if opportunity.product_category not in {c.value for c in REGULATED_CATEGORIES}:
+        return None
+    result = coverage(ctx.session, company.country, opportunity.product_category, ctx.now.date())
+    if not result.covered or result.license is None:
+        return None
+    lic = result.license
+    return f"{lic.holder_name} is a licensed {' and '.join(lic.license_types)} in {lic.country}"
+
+
+def allowed_facts_for(
+    opportunity: Opportunity, quantity: int | None, license_verified: bool = False
+) -> dict:
     economics = opportunity.economics or {}
     numbers = []
     if quantity:
@@ -29,6 +43,7 @@ def allowed_facts_for(opportunity: Opportunity, quantity: int | None) -> dict:
         "numbers": numbers,
         "regulatory_verified": "regulatory_verified" in (opportunity.compliance_flags or []),
         "relationship_verified": False,
+        "license_verified": license_verified,
     }
 
 
@@ -58,6 +73,7 @@ class OutreachAgent(BaseAgent):
                 "quantity": quantity,
                 "sender_name": ctx.settings.email_sender_name or "NEXUS Sourcing",
                 "step": step,
+                "license_statement": license_statement(ctx, opportunity, company),
             },
         )
 
@@ -167,7 +183,9 @@ class OutreachAgent(BaseAgent):
                 "subject": copy.get("subject", ""),
                 "body": copy.get("body", ""),
                 "personalized": bool(copy.get("personalized", True)),
-                "allowed_facts": allowed_facts_for(opportunity, quantity),
+                "allowed_facts": allowed_facts_for(
+                    opportunity, quantity, license_verified=license_statement(ctx, opportunity, company) is not None
+                ),
                 "regulatory_checked": bool(task_input.get("regulatory_checked", False)),
                 "step": step,
             },

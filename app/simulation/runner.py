@@ -72,6 +72,14 @@ def run_simulation(
         )
         report["objective_id"] = objective.id
 
+        from app.policies.licenses import add_license, list_licenses
+        from app.simulation.fixtures import LICENSES
+
+        existing = {(lic.country, lic.license_number) for lic in list_licenses(session, True)}
+        for fixture in LICENSES:
+            if (fixture["country"], fixture["license_number"]) not in existing:
+                add_license(session, **fixture)
+
         for day in range(days):
             loop = orchestrator.run(objective.id)
             jobs = scheduler.run_due()
@@ -123,6 +131,13 @@ def run_simulation(
             select(func.count()).select_from(AuditEvent).where(AuditEvent.decision == "block")
         )
         report["budget"] = ctx.budget.snapshot()
+        report["license_escalations"] = sum(
+            1
+            for payload in session.scalars(
+                select(AuditEvent.payload).where(AuditEvent.event_type == "policy_decision")
+            )
+            if "R-REG-04" in (payload or {}).get("rule_ids", [])
+        )
 
         from app.agents.learning import metrics
 
