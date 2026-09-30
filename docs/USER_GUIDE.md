@@ -318,17 +318,17 @@ Take these steps in order.
 
 1. **Simulation on the server.** Run with `NEXUS_MODE=simulation` for a day. Get familiar with the dashboard, the review queue and the alerts.
 2. **Fill in production settings.** Add the AI key, search key, sender identity, SMTP and IMAP details and notification channels to `.env`. Run `nexus doctor --live` until everything shows `ok` and the `missing` list is empty.
-3. **Switch to production with approval mode on:**
+3. **Switch to production:**
 
    ```ini
    NEXUS_MODE=production
-   REQUIRE_OUTREACH_APPROVAL=true
+   REQUIRE_OUTREACH_APPROVAL=false
    OUTREACH_DAILY_LIMIT=5
    OUTREACH_MAX_FOLLOWUPS=2
    ```
 
-   Then run `docker compose up -d` to apply. With approval mode on, every first e-mail and follow-up waits in your review queue. You read each draft, edit it if needed, and approve.
-4. **After 2–3 weeks**, once the drafts are consistently good, set `REQUIRE_OUTREACH_APPROVAL=false` and raise `OUTREACH_DAILY_LIMIT` step by step. Replies with prices always need your approval, whatever this setting says.
+   Then run `docker compose up -d` to apply. Buyer outreach, follow-ups and supplier RFQs now send on their own, within the policy rules, daily limits and budget. Read a sample of the sent e-mails in your mailbox's Sent folder during the first days. If you want to check every draft before it goes, set `REQUIRE_OUTREACH_APPROVAL=true` and each one will wait in your review queue.
+4. **Raise `OUTREACH_DAILY_LIMIT` step by step** (5, then 10, 15, 20…) as the domain warms up and bounces stay low. Replies to buyers with prices, activating supplier quotes, and commitments always need your approval, whatever this setting says.
 5. **Watch the first month closely:** bounce rate (check the System tab and your mailbox), replies, and whether the "catalogue gap" items are telling you which offers and prices to add.
 
 To stop everything at once, press **Emergency stop** on the Overview tab. To pause only one product line or country, use the pause fields on the Settings tab.
@@ -702,7 +702,7 @@ All settings live in `.env` on the server. After changing it, run `docker compos
 | `NOTIFY_MAX_PER_HOUR` | 10 | Alert cap |
 | `BUDGET_MONTHLY_LIMIT_USD` | 200 | Can only be lowered |
 | `BUDGET_CATEGORY_LIMITS_JSON` | planning split | Per-line limits |
-| `REQUIRE_OUTREACH_APPROVAL` | true in the example | Every outreach e-mail waits for you |
+| `REQUIRE_OUTREACH_APPROVAL` | false | `true` makes every buyer outreach e-mail, follow-up and supplier RFQ wait for your approval |
 | `REQUIRE_HUMAN_APPROVAL_ABOVE_USD` | 0 | Every financial commitment goes to you |
 | `ALLOW_REGULATED_AUTONOMOUS_TRANSACTIONS` | false | Leave false |
 
