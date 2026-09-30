@@ -4,9 +4,10 @@ An autonomous B2B sales, sourcing and outreach platform for refurbished laptops,
 used/refurbished iPhones, medical equipment, pharmaceutical products and
 servers/IT, operating in East Africa and selected other markets.
 
-NEXUS researches markets, finds buyers from real web sources, finds their
-published contacts, qualifies and scores opportunities, matches them to your
-real supplier offers, calculates landed cost and margin, sends personalised
+NEXUS researches markets, finds buyers from real web sources and business
+listings, finds their published contacts, qualifies and scores opportunities,
+finds and vets suppliers and asks them for quotes, matches deals to real
+supplier offers, calculates landed cost and margin, sends personalised
 outreach and follow-ups, reads replies, drafts quotes for your approval and
 learns from outcomes — inside a hard USD 200/month ceiling and a deterministic
 policy layer.

@@ -18,6 +18,7 @@ This guide is for the person running NEXUS: setting it up, putting it on a serve
 12. [Licences and regulated products](#12-licences-and-regulated-products)
 13. [Commercial settings](#13-commercial-settings)
 14. [How NEXUS finds buyers and contacts](#14-how-nexus-finds-buyers-and-contacts)
+    - [Finding and engaging suppliers](#finding-and-engaging-suppliers)
 15. [E-mail: sending, replies, bounces and opt-outs](#15-e-mail-sending-replies-bounces-and-opt-outs)
 16. [Budget and costs](#16-budget-and-costs)
 17. [Alerts on your phone](#17-alerts-on-your-phone)
@@ -179,6 +180,8 @@ In the dashboard, create an objective on the Overview tab, press **Run a pass no
 | A Telegram bot (optional) | Alerts on your phone | Free | Free |
 | Your commercial data | Real costs and selling prices | Supplier quotes and market price checks | Your time |
 
+**Which search provider:** use **Serper**. It returns Google's results, which cover African businesses far better than other indexes, it is the only one of the three whose business listings (Google Maps: hospitals, pharmacies, schools and wholesalers with their websites) NEXUS can use, and it is the cheapest per query. Brave has its own, smaller index; Tavily returns page text but NEXUS already reads pages itself.
+
 **Search provider notes (as of September 2026 — check current prices):** Serper offers 2,500 free queries and then about USD 1 per 1,000; Brave Search API includes USD 5 of monthly credit (about 1,000 queries) and then USD 5 per 1,000; Tavily has 1,000 free credits a month. NEXUS typically uses a few hundred to about a thousand queries a month. Set `SEARCH_COST_PER_QUERY_USD` to your plan's price (`0.001` for Serper, `0.005` for Brave, `0.008` for Tavily) so the budget is accurate.
 
 **Legal and compliance:** NEXUS identifies you as the sender in every e-mail and honours opt-outs immediately, but it is not legal advice. B2B e-mail rules differ by country. If you e-mail buyers in the EU (the iPhone markets in Romania, Bulgaria and similar), GDPR applies, including a legitimate-interest basis for contacting business addresses and an easy opt-out. Kenya's Data Protection Act 2019 also applies to personal data you hold. Take advice if you are unsure.
@@ -338,8 +341,9 @@ About 10–15 minutes:
 
 1. **Reviews tab** — decide everything waiting. The badge on the tab shows how many items there are, and Telegram or e-mail alerts tell you when new ones arrive.
 2. **Catalogue gaps** — items of kind *catalogue* say which offer or selling price is missing. Add it, and parked deals resume automatically within six hours.
-3. **Pipeline tab** — when a deal is won or lost, press **Won** or **Lost**. For a win, enter revenue and margin if you can. These outcomes are what the learning loop measures.
-4. **Overview** — glance at budget used, replies and positive-reply rate.
+3. **Suppliers tab** — glance at new suppliers and RFQs. Block anything that looks wrong. Supplier quotes to check arrive in Reviews.
+4. **Pipeline tab** — when a deal is won or lost, press **Won** or **Lost**. For a win, enter revenue and margin if you can. These outcomes are what the learning loop measures.
+5. **Overview** — glance at budget used, replies and positive-reply rate.
 
 Weekly: check the price book and offers for expired entries, and look at the System tab for failed tasks or compliance events.
 
@@ -354,7 +358,10 @@ Anything NEXUS will not do on its own, or has stopped doing, becomes one review 
 | **outreach approval** | A first e-mail or follow-up that needs you (approval mode, a regulated market outside your licence, missing regulatory check) | Edit the draft, then **Approve and send**; or **Reject** |
 | **reply approval** | A drafted answer to a buyer, usually with a suggested price | Edit, then **Approve and send**; or **Reject** |
 | **commercial handoff** | A buyer response NEXUS could not draft an answer for | Handle it yourself, then **Mark resolved** |
-| **catalogue** | A deal is waiting for a supplier offer or a selling price | Add it in the Catalogue tab; the item closes itself |
+| **catalogue** | A deal is waiting for a supplier offer or a selling price | Add it in the Catalogue tab; the item closes itself. NEXUS also starts supplier research for that line |
+| **supplier rfq approval** | An RFQ to a supplier waiting because approval mode is on | Edit, then **Approve and send**; or **Reject** |
+| **supplier quote** | Price lines read from a supplier's e-mail, as draft offers | Compare with the e-mail, then **Activate in catalogue**; or **Reject** |
+| **supplier reply** | A supplier asked a question or replied without a quote | Answer from your mailbox, then **Mark resolved** |
 | **compliance** | Missing supplier documents, or a regulatory point raised by a buyer | Investigate, then **Mark resolved** or **Reject** |
 | **licence** | A licence is expiring or has expired | Renew and register the new licence, then **Mark resolved** |
 | **other** | Anything else escalated, including mail that could not be matched to a contact | Read it and resolve |
@@ -458,6 +465,11 @@ Edited on the Settings tab or with `nexus settings set KEY 'JSON'`.
 | `transaction_cost_pct` | 0.03 | Bank, FX and payment costs as a fraction of revenue |
 | `required_documents` | see section 12 | Category → list of document names |
 | `target_markets` | East African countries per category; iPhones also Romania, Bulgaria, Serbia, Moldova | Category → countries research may consider |
+| `directories` | buyer: UNGM, tenders.go.ke; supplier: per-category B2B directories | Sites searched with `site:` queries in addition to the open web |
+| `supplier_regions` | e.g. laptops: UAE, US, UK, Germany, China, Kenya; pharma: India, China, Kenya, Egypt | Where supplier research looks |
+| `rfq_products` | A description per category | What RFQs ask suppliers to quote for |
+| `rfq_destination` | Nairobi, Kenya (CIF Mombasa or DAP Nairobi) | Delivery point in RFQs |
+| `supplier_min_score` | 0.5 | Minimum score before a supplier receives an RFQ |
 
 Examples:
 
@@ -475,14 +487,31 @@ Remove a duty rate by setting it to `null`: `'{"Uganda": null}'`.
 
 In production every fact about a buyer comes from something NEXUS retrieved and stored:
 
-1. **Search** — queries such as "Kenya hospital tender medical equipment" run through your search provider. Every result is stored as a source document.
+1. **Search** — queries such as "Kenya hospital tender medical equipment" run through your search provider, plus searches restricted to public directories and tender portals (`directories` → `buyer` in settings, e.g. UNGM and tenders.go.ke). With Serper, NEXUS also reads Google Maps business listings (for example "hospital in Kenya"); a listed organisation with its own website is taken as a prospect directly. Every result is stored as a source document.
 2. **Proposals** — the AI reads the results and proposes organisations. Each proposal must cite the result it came from.
 3. **Checks in code** — a proposal is accepted only if the organisation's name actually appears in the cited result. Quoted buying signals must appear word-for-word. Rejected proposals are counted in the task output and never "corrected".
 4. **Website** — the organisation's own site is found (directories and social networks such as LinkedIn are not accepted as the website), and its home and about pages are read.
 5. **Contact** — NEXUS reads contact, procurement and about pages on the organisation's own site. An e-mail address is used only if it is published there. A person's name is used only if it appears on that page. Otherwise NEXUS uses a published role mailbox (procurement@, tenders@, info@ and so on), addressed to the "Procurement office".
-6. **No published address, no contact.** The opportunity is closed as stale rather than guessing an address.
+6. **Naming the person behind a mailbox.** When only a role mailbox is published, NEXUS runs one search for public LinkedIn profiles of that organisation's procurement, purchasing or supply-chain staff. If a result names the organisation and has a relevant job title, the e-mail to the published mailbox is addressed to that person by name, and the profile link appears on the Pipeline tab so you can connect with them yourself.
+7. **No published address, no contact.** The opportunity is closed as stale rather than guessing an address.
+
+**Why NEXUS does not scrape LinkedIn or send LinkedIn messages:** LinkedIn's terms forbid automated scraping and messaging, accounts that do it are restricted or banned, and LinkedIn has won in court on this. NEXUS only reads the snippets that public search engines already show, and never logs in to or visits LinkedIn itself. Connecting on LinkedIn is left to you.
 
 The fetcher respects `robots.txt`, identifies itself (`FETCH_USER_AGENT`), waits a few seconds between requests to the same site, and refuses to fetch private or internal network addresses.
+
+### Finding and engaging suppliers
+
+NEXUS works the supply side as actively as the buy side, with the same rule: only what it can see in a source counts.
+
+1. **Supplier research** runs weekly for every product line in an active objective, immediately when a deal is parked because no supplier offer exists, and whenever you press **Search** on the Suppliers tab. It searches the open web for each supplier region in `supplier_regions` (for example UAE, US, UK and China for laptops; India and China for pharmaceuticals) and the supplier directories in `directories` → `supplier` (Made-in-China, IndiaMART, Europages, Global Sources, DOTmed…). An organisation is accepted only if it is named in a retrieved result.
+2. **Supplier check.** NEXUS reads the supplier's own website: products, claimed certifications, export evidence, business address and a published contact address. It scores the supplier from 0 to 1 and flags red flags: no website of its own, only a free webmail address, no evidence it sells the line. Claimed certifications (ISO 13485, WHO-GMP, R2 and so on) are shown as **unverified**. They are what the supplier says, not proof.
+3. **Request for quotation.** Suppliers scoring at least `supplier_min_score` (default 0.5) get an RFQ by e-mail. It describes what you buy (`rfq_products`), typical order quantities and buyer countries taken from your live pipeline, and the delivery point (`rfq_destination`). It asks for unit price, MOQ, availability, grading, warranty, lead time, payment terms, Incoterms, validity and, for regulated lines, the required documents. It states your licence where one covers the line, says clearly that it is a request for prices and not an order, and carries the same sender footer and opt-out as all NEXUS e-mail. Up to `SUPPLIER_RFQ_MAX_FOLLOWUPS` follow-ups are sent `SUPPLIER_RFQ_FOLLOWUP_DAYS` apart, threaded; after that the supplier is marked unresponsive. At most `SUPPLIER_RFQ_DAILY_LIMIT` RFQs go out per day, and approval mode holds them for you like buyer e-mails.
+4. **Reading the reply.** A quote is read line by line into **draft** supplier offers. Every price, MOQ, quantity and lead time must literally appear in the supplier's e-mail, or it is left out. The draft appears in Reviews as a *supplier quote* next to the original e-mail. Check it, then press **Activate in catalogue**, and only then is it used for pricing. Quotes in another currency must be converted and entered in the Catalogue tab. Questions from suppliers come to you as *supplier reply* items. A supplier that says it cannot supply is marked declined.
+5. **Your controls.** On the Suppliers tab you can **Block** a supplier (never contacted again) or **Qualify** one NEXUS was unsure about (it is sent an RFQ on the next pass), and filter by status: lead, qualified, rfq_sent, quoted, approved, declined, unresponsive, rejected or blocked.
+
+Nothing on the supply side commits you to buying: NEXUS never places orders, accepts terms or pays.
+
+Attachments (PDF or Excel price lists) are not read automatically yet. The review item tells you a reply arrived; open the attachment in your mailbox and enter the lines in the Catalogue tab.
 
 ---
 
@@ -601,6 +630,9 @@ All endpoints except `/health` and `/u/…` require the dashboard login (HTTP Ba
 | POST | `/api/catalogue/import?kind=offers\|prices` | CSV body; all or nothing |
 | GET | `/api/catalogue/template/{kind}` | CSV header |
 | GET/PUT | `/api/settings/commercial` | Read / update commercial settings |
+| GET | `/api/suppliers?status=` | Supplier leads with score, red flags, contact and RFQ status |
+| POST | `/api/suppliers/{id}/status` | `{status: blocked\|qualified\|lead\|approved}` |
+| POST | `/api/suppliers/research` | `{product_category, regions?}`: search for suppliers now |
 | GET/POST | `/api/licenses` | List / register licences |
 | POST | `/api/licenses/{id}/deactivate` | Stop relying on a licence |
 
@@ -637,7 +669,7 @@ All settings live in `.env` on the server. After changing it, run `docker compos
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `SEARCH_PROVIDER` | none | `serper`, `brave` or `tavily` |
+| `SEARCH_PROVIDER` | none | `serper` (recommended; enables business listings), `brave` or `tavily` |
 | `SEARCH_API_KEY` | — | |
 | `SEARCH_COST_PER_QUERY_USD` | 0.005 | Your plan's price per query |
 | `RESEARCH_MAX_QUERIES_PER_TASK` | 3 | Queries per country per prospecting task |
@@ -657,6 +689,9 @@ All settings live in `.env` on the server. After changing it, run `docker compos
 | `OUTREACH_DAILY_LIMIT` | 10 in the example | Total outreach e-mails per 24 hours |
 | `OUTREACH_PER_COMPANY_DAY_LIMIT` | 1 | Per contact per 24 hours |
 | `OUTREACH_MAX_FOLLOWUPS` | 2 in the example | Follow-ups after the first e-mail |
+| `SUPPLIER_RFQ_DAILY_LIMIT` | 10 | RFQs to suppliers per 24 hours |
+| `SUPPLIER_RFQ_MAX_FOLLOWUPS` | 2 | Follow-ups after an unanswered RFQ |
+| `SUPPLIER_RFQ_FOLLOWUP_DAYS` | 5 | Days between RFQ follow-ups |
 
 **Alerts, budget and safety**
 
@@ -697,7 +732,9 @@ These codes appear in the review queue, the System tab and the audit log. **Bloc
 | R-OUT-00…04 | block | Contact missing, opted out, bounced, no address, or company opted out |
 | R-DUP-01 | block | The same message already exists |
 | R-RATE-01 / 02 | block | Daily limit, or per-contact frequency |
+| R-RATE-03 | block | Daily supplier RFQ limit |
 | R-FUP-01 / 02 | block | Follow-up cap reached, or sequence already stopped |
+| R-FUP-03 | block | Supplier follow-up cap reached |
 | R-FACT-01 | block | Unsupported figure or claim in the message |
 | R-FACT-02 | block | Message not personalised |
 | R-BUD-01 | block | Budget line or month exhausted |

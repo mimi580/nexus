@@ -463,9 +463,18 @@ def set_supplier_status(company_id: str, payload: SupplierStatusIn, actor: str =
         company.status = payload.status
         if payload.status == "blocked":
             company.opted_out = True  # never contacted again
+        queued = 0
+        if payload.status == "qualified":
+            company.opted_out = False
+            for category in (company.profile or {}).get("categories", []):
+                _, created = ctx.tasks.create_task(
+                    agent="supplier_rfq", objective_id=None,
+                    task_input={"company_id": company.id, "product_category": category}, priority=70,
+                )
+                queued += int(created)
         ctx.audit.record("supplier_status", summary=f"{company.name}: {payload.status}", decision="allow",
                          actor=actor, note=payload.note)
-        return {"id": company.id, "status": company.status}
+        return {"id": company.id, "status": company.status, "rfqs_queued": queued}
 
 
 @app.post("/api/suppliers/research")
