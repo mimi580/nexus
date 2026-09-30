@@ -132,6 +132,13 @@ def rule_rejected_by_operator(req: ActionRequest, ctx: PolicyContext) -> PolicyR
     return None
 
 
+def rule_outreach_approval_mode(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
+    """REQUIRE_OUTREACH_APPROVAL=true: the operator approves every unsolicited e-mail."""
+    if ctx.settings.require_outreach_approval and req.kind in (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP):
+        return _escalate("R-APPR-01", "approval mode is on: every outreach e-mail waits for you", RiskLevel.LOW)
+    return None
+
+
 def rule_reply_needs_human(req: ActionRequest, _ctx: PolicyContext) -> PolicyResult | None:
     """Answers to buyers carry prices and terms: a human approves every one."""
     if req.kind == ActionKind.SEND_REPLY:
@@ -291,6 +298,7 @@ DEFAULT_RULES: list[Rule] = [
     rule_commitments,
     rule_rejected_by_operator,
     rule_reply_needs_human,
+    rule_outreach_approval_mode,
     rule_regulated,
     rule_license,
     rule_opt_out,

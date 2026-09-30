@@ -126,3 +126,20 @@ def test_empty_edited_body_is_refused(ctx):
     item = ctx.session.scalar(select(ReviewItem))
     with pytest.raises(queue.ReviewError, match="empty"):
         queue.decide(ctx, item.id, "approve", body="   ")
+
+
+def test_approval_mode_holds_every_outreach_email(ctx):
+    from app.agents.outreach import OutreachAgent
+    from app.core.config import Settings
+
+    ctx.policy.settings = Settings(_env_file=None, require_outreach_approval=True)
+    company, _ = ctx.memory.upsert_company(name="Approval Co", domain="approval.example", country="Kenya")
+    contact = ctx.memory.upsert_contact(company_id=company.id, full_name="Ann Buyer", role="Procurement",
+                                        email="ann@approval.example", confidence=0.7, source="site")
+    opportunity, _ = ctx.memory.create_opportunity(company.id, LAPTOP)
+    opportunity.contact_id = contact.id
+    opportunity.economics = {"quantity": 40, "lead_time_days": 12}
+    ctx.session.flush()
+    result = OutreachAgent().run(ctx, {"opportunity_id": opportunity.id, "regulatory_checked": True})
+    assert result.output["escalated"] is True
+    assert "R-APPR-01" in ctx.session.scalar(select(ReviewItem)).rule_ids

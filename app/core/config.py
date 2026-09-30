@@ -108,6 +108,7 @@ class Settings(BaseSettings):
     outreach_per_company_day_limit: int = 1
     outreach_max_followups: int = 3
 
+    require_outreach_approval: bool = False  # "training wheels": every first contact and follow-up goes to review
     require_human_approval_above_usd: float = 0.0
     allow_regulated_autonomous_transactions: bool = False
 

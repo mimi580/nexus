@@ -8,11 +8,13 @@ from app.core.errors import MalformedModelOutput
 from app.core.interfaces import ModelRequest, ModelResponse
 from app.core.types import ModelTier
 
-# USD per 1M tokens, per logical tier. Used for estimation and for the ledger.
+# USD per 1M tokens (input, output), per logical tier. Used for estimation and
+# for the ledger. Deliberately at or above list prices (Sonnet 5.5 $2/$10,
+# Haiku 4.5 $1/$5 as of 2026-09) so the budget errs on the side of stopping early.
 TIER_RATES: dict[ModelTier, tuple[float, float]] = {
     ModelTier.REASONING: (3.0, 15.0),
-    ModelTier.BULK: (0.25, 1.25),
-    ModelTier.CRITIC: (0.80, 4.00),
+    ModelTier.BULK: (1.0, 5.0),
+    ModelTier.CRITIC: (1.0, 5.0),
 }
 
 FENCE_RE = re.compile(r"```(?:json)?(.*?)```", re.DOTALL)
