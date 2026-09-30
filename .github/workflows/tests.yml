@@ -33,7 +33,7 @@ jobs:
         run: alembic check
       - name: Simulation smoke test
         run: |
-          if ! python -m app.cli simulate --days 10 > simulation-report.json 2> simulation-errors.txt; then
+          if ! python -m app.cli simulate --days 10 --quiet > simulation-report.json 2> simulation-errors.txt; then
             python -c "import sys; t=open('simulation-errors.txt').read()[-3000:]; print('::error title=Simulation failed::' + t.replace('%','%25').replace('\r','').replace('\n','%0A'))"
             exit 1
           fi
