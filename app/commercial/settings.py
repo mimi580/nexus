@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.types import ProductCategory
 from app.database.models import SystemState
+from app.policies.licenses import canonical_country
 
 KEY = "commercial"
 
@@ -36,6 +37,15 @@ DEFAULTS: dict[str, Any] = {
         ProductCategory.MEDICAL.value: ["CE documentation on file"],
     },
     "transaction_cost_pct": 0.03,
+    # Countries research may consider per category. Market scores are recomputed
+    # from evidence every cycle; this list only bounds where NEXUS looks.
+    "target_markets": {
+        ProductCategory.MEDICAL.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Zambia"],
+        ProductCategory.PHARMA.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Zambia"],
+        ProductCategory.LAPTOP.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Nigeria", "Ghana"],
+        ProductCategory.SERVER_IT.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Nigeria", "Egypt"],
+        ProductCategory.IPHONE.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Romania", "Bulgaria", "Serbia", "Moldova"],
+    },
 }
 
 
@@ -91,6 +101,15 @@ def update(session: Session, changes: dict[str, Any]) -> dict[str, Any]:
                 if not isinstance(docs, list) or not all(isinstance(d, str) and d.strip() for d in docs):
                     raise CommercialSettingsError("required_documents values are lists of document names")
                 current[key][cat] = [d.strip() for d in docs]
+        elif key == "target_markets":
+            if not isinstance(value, dict):
+                raise CommercialSettingsError("target_markets must be an object keyed by product category")
+            for cat, countries in value.items():
+                if cat not in categories:
+                    raise CommercialSettingsError(f"unknown category {cat!r}")
+                if not isinstance(countries, list) or not all(isinstance(c, str) and c.strip() for c in countries):
+                    raise CommercialSettingsError("target_markets values are lists of country names")
+                current[key][cat] = [canonical_country(c) for c in countries]
         elif key == "transaction_cost_pct":
             rate = float(value)
             if not 0 <= rate < 0.5:

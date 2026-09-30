@@ -38,6 +38,7 @@ class RunContext:
     budget: BudgetController
     audit: DbAuditLogger
     email: Any = None
+    research: Any = None
     clock: Any = field(default=utcnow)
     objective_id: str | None = None
     task_id: str | None = None
@@ -77,9 +78,11 @@ def build_context(
     email: Any = None,
     clock: Any = utcnow,
     router: ModelRouter | None = None,
+    research: Any = None,
 ) -> RunContext:
     from app.execution.email import build_email_provider
     from app.models.router import build_default_router
+    from app.tools.research import build_research
 
     settings = settings or get_settings()
     budget = BudgetController(session, settings)
@@ -94,5 +97,6 @@ def build_context(
         budget=budget,
         audit=DbAuditLogger(session),
         email=email or build_email_provider(settings),
+        research=research if research is not None else build_research(session, settings, budget, clock),
         clock=clock,
     )

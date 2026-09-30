@@ -46,6 +46,10 @@ class MarketResearchAgent(BaseAgent):
     complexity = 0.8
 
     def run(self, ctx: RunContext, task_input: dict) -> AgentResult:
+        if getattr(ctx.research, "live", False):
+            from app.agents import grounded
+
+            return grounded.research_markets(self, ctx, task_input)
         category = task_input["product_category"]
         weights = task_input.get("weights") or DEFAULT_WEIGHTS
         top_n = int(task_input.get("top_n", 3))

@@ -16,6 +16,10 @@ class ProspectDiscoveryAgent(BaseAgent):
     complexity = 0.4
 
     def run(self, ctx: RunContext, task_input: dict) -> AgentResult:
+        if getattr(ctx.research, "live", False):
+            from app.agents import grounded
+
+            return grounded.discover_prospects(self, ctx, task_input)
         category = task_input["product_category"]
         countries = task_input.get("countries") or []
         limit = int(task_input.get("limit", 6))
@@ -93,6 +97,10 @@ class CompanyIntelligenceAgent(BaseAgent):
             return self.fail("opportunity not found")
         company = ctx.session.get(Company, opportunity.company_id)
         assert company is not None
+        if getattr(ctx.research, "live", False):
+            from app.agents import grounded
+
+            return grounded.company_intelligence(self, ctx, opportunity, company)
 
         prompt = (
             f"Summarise what {company.name} does and any evidence of demand for "
@@ -156,6 +164,10 @@ class DecisionMakerAgent(BaseAgent):
             return self.fail("opportunity not found")
         company = ctx.session.get(Company, opportunity.company_id)
         assert company is not None
+        if getattr(ctx.research, "live", False):
+            from app.agents import grounded
+
+            return grounded.decision_makers(self, ctx, opportunity, company, task_input)
 
         prompt = (
             f"Identify the procurement-relevant role at {company.name} for "

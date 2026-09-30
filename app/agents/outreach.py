@@ -14,6 +14,8 @@ from app.core.ids import stable_key
 from app.core.interfaces import ActionRequest, AgentResult
 from app.core.types import ActionKind, Decision, ModelTier, OpportunityStage, REGULATED_CATEGORIES, utcnow
 from app.policies.licenses import coverage
+
+ROLE_MAILBOX_ROLE = "published role mailbox"  # mirrors app.agents.grounded
 from app.database.models import Company, Contact, FollowUp, Message, Interaction, Opportunity, ReviewItem
 
 SEND_COST_USD = 0.01  # per message, charged to the email category
@@ -66,7 +68,7 @@ class OutreachAgent(BaseAgent):
             prompt,
             {
                 "company_name": company.name,
-                "contact_name": contact.full_name.split()[0],
+                "contact_name": None if contact.role == ROLE_MAILBOX_ROLE else contact.full_name.split()[0],
                 "product_category": opportunity.product_category,
                 "buying_signals": company.buying_signals,
                 "message_angle": strategy.get("message_angle"),

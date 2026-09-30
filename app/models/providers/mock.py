@@ -176,7 +176,7 @@ class MockProvider(BaseProvider):
 
     def _outreach(self, ctx: dict, rng: random.Random) -> dict:
         company = ctx.get("company_name", "your organisation")
-        contact = ctx.get("contact_name", "there")
+        contact = ctx.get("contact_name") or "there"
         category = (ctx.get("product_category") or "equipment").replace("_", " ")
         signal = (ctx.get("buying_signals") or ["your current procurement cycle"])[0]
         angle = ctx.get("message_angle", "availability and lead time")
