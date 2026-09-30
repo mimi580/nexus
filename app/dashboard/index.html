@@ -115,7 +115,7 @@
         <option value="pending">Waiting for you</option><option value="approved">Approved</option>
         <option value="rejected">Rejected</option><option value="resolved">Resolved</option><option value="all">All</option>
       </select>
-      <span class="small muted">Approve sends the exact draft shown (all safety checks still apply). Reject closes the deal and the action is never proposed again. Resolve means you handled it yourself.</span>
+      <span class="small muted">Approve sends the draft exactly as shown in the edit box (all safety checks still apply). Reject closes the deal and the action is never proposed again. Resolve means you handled it yourself.</span>
     </div>
     <div id="review-list"></div>
   </div>
@@ -293,17 +293,22 @@ async function loadReviews() {
   const items = await api("/api/reviews?status=" + el("review-filter").value);
   el("review-list").innerHTML = items.length ? items.map((i) => {
     const a = i.action || {}; const o = i.opportunity;
-    const isSend = i.kind === "outreach_approval";
+    const isSend = i.kind === "outreach_approval" || i.kind === "reply_approval";
+    const p = a.pricing;
     const decided = i.status !== "pending";
     return `<div class="card" data-id="${esc(i.id)}">
       <div class="kind">${words(i.kind)}${i.occurrences > 1 ? ` · raised ${i.occurrences}×` : ""}</div>
       <h3>${esc(i.title)}</h3>
       ${o ? `<div class="small muted">${esc(o.company)} · ${esc(o.country)} · ${words(o.category)} · stage ${words(o.stage)}</div>${econLine(o.economics)}` : ""}
       ${(i.reasons || []).length ? `<ul style="margin-top:6px">${i.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
-      ${a.body ? `<div class="small muted" style="margin-top:6px">To ${esc(a.to || a.from || "")}${a.subject ? " · " + esc(a.subject) : ""}</div><div class="draft">${esc(a.body)}</div>` : ""}
-      ${i.last_reply ? `<div class="small muted">Their latest reply:</div><div class="draft">${esc(i.last_reply.body)}</div>` : ""}
+      ${a.their_message ? `<div class="small muted" style="margin-top:6px">They wrote:</div><div class="draft">${esc(a.their_message)}</div>` : (i.last_reply ? `<div class="small muted">Their latest reply:</div><div class="draft">${esc(i.last_reply.body)}</div>` : "")}
+      ${p ? `<div class="draft small">Suggested price <b>${money(p.suggested_unit_price_usd)}</b>/unit for ${esc(p.quantity)} units · landed cost ${money(p.unit_landed_cost_usd)}/unit · floor at ${esc(p.min_margin_pct)}% margin ${money(p.floor_unit_price_usd)} · price book ${range(p.price_book_unit_usd)}<br><span class="muted">${esc(p.note)}</span></div>` : ""}
+      ${a.body && isSend && !decided ? `<div class="small muted" style="margin-top:6px">To ${esc(a.to || "")} — edit before approving if needed:</div>
+        <input class="edit-subject" value="${esc(a.subject || "")}" style="width:100%;margin:6px 0">
+        <textarea class="edit-body" style="min-height:200px">${esc(a.body)}</textarea>` : ""}
+      ${a.body && (!isSend || decided) ? `<div class="small muted" style="margin-top:6px">To ${esc(a.to || a.from || "")}${a.subject ? " · " + esc(a.subject) : ""}</div><div class="draft">${esc(a.body)}</div>` : ""}
       ${decided ? `<div class="small muted">${esc(i.status)} by ${esc(i.decided_by)} ${esc((i.decided_at || "").slice(0, 16).replace("T", " "))}${i.decision_note ? " · " + esc(i.decision_note) : ""}</div>` : `
-      <textarea placeholder="Note (optional): why, what you agreed, next step"></textarea>
+      <textarea class="note" placeholder="Note (optional): why, what you agreed, next step"></textarea>
       <div class="row" style="margin-top:8px">
         ${isSend ? `<button class="primary" data-d="approve">Approve and send</button>` : `<button class="primary" data-d="resolve">Mark resolved</button>`}
         <button class="danger" data-d="reject">Reject${o ? " (close deal)" : ""}</button>
@@ -312,9 +317,11 @@ async function loadReviews() {
   }).join("") : '<p class="empty">Nothing here.</p>';
   el("review-list").querySelectorAll("button[data-d]").forEach((btn) => btn.onclick = () => {
     const card = btn.closest(".card");
-    const note = card.querySelector("textarea").value;
+    const payload = { decision: btn.dataset.d, note: card.querySelector("textarea.note").value };
+    const subj = card.querySelector(".edit-subject"); const body = card.querySelector(".edit-body");
+    if (btn.dataset.d === "approve" && body) { payload.body = body.value; payload.subject = subj ? subj.value : null; }
     btn.disabled = true;
-    act(() => api(`/api/reviews/${card.dataset.id}/decision`, { method: "POST", body: JSON.stringify({ decision: btn.dataset.d, note }) }), "Decision recorded").then(loadReviews);
+    act(() => api(`/api/reviews/${card.dataset.id}/decision`, { method: "POST", body: JSON.stringify(payload) }), "Decision recorded").then(loadReviews);
   });
 }
 el("review-filter").onchange = loadReviews;

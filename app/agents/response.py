@@ -159,15 +159,21 @@ class ResponseAgent(BaseAgent):
                     else OpportunityStage.RESPONSE
                 )
                 ctx.memory.transition(opportunity, stage, f"positive reply: {category.value}")
-            # A quotation is a commercial commitment: a human authorises it.
+            # A quotation is a commercial commitment: NEXUS drafts, a human approves.
+            drafted = False
+            if opportunity is not None and contact is not None:
+                from app.agents.reply import draft_reply
+
+                drafted = draft_reply(self, ctx, message, opportunity, contact, category.value)
             ctx.audit.record(
                 "human_handoff_required",
                 summary=f"{category.value} reply needs a quotation or commercial answer",
-                decision="escalate",
+                decision="allow" if drafted else "escalate",
                 task_id=ctx.task_id,
                 opportunity_id=message.opportunity_id,
+                drafted=drafted,
             )
-            notes.append("queued for human commercial response")
+            notes.append("draft reply awaiting your approval" if drafted else "queued for human commercial response")
 
         return self.ok(
             output={"category": category.value, "confidence": data.get("confidence")},

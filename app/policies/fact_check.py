@@ -104,6 +104,9 @@ def validate_message(
             if token in lowered:
                 unsupported.append(f"license_claim:{token}")
 
+    if facts.get("operator_approved"):
+        return FactCheckResult(ok=not unsupported, unsupported=unsupported, checked_numbers=[])
+
     allowed_numbers = {_normalize_number(str(n)) for n in facts.get("numbers", [])}
     checked: list[str] = []
     for match in NUMBER_RE.finditer(text):

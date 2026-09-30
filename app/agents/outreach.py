@@ -91,6 +91,7 @@ class OutreachAgent(BaseAgent):
         dedupe_key: str,
         step: int,
         fact_check: dict,
+        in_reply_to: str | None = None,
     ) -> Message:
         from app.execution.email import compliance_footer, new_message_id, unsubscribe_url
 
@@ -133,7 +134,7 @@ class OutreachAgent(BaseAgent):
                 "contact_id": contact.id,
                 "message_id": message_id,
                 "unsubscribe_url": link,
-                "in_reply_to": previous.provider_message_id if previous else None,
+                "in_reply_to": in_reply_to or (previous.provider_message_id if previous else None),
             },
         )
         message.provider = result.provider

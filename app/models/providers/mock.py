@@ -196,6 +196,26 @@ class MockProvider(BaseProvider):
         )
         return {"subject": subject, "body": body, "personalized": True}
 
+    def _reply(self, ctx: dict, rng: random.Random) -> dict:
+        name = ctx.get("contact_name") or "there"
+        terms = ctx.get("terms") or {}
+        lines = [f"Hello {name},", "", "Thank you for your reply."]
+        price = ctx.get("indicative_unit_price_usd")
+        qty = ctx.get("quantity")
+        if price:
+            lines.append(
+                f"Our indicative price is USD {price} per unit"
+                + (f" for {qty} units" if qty else "")
+                + f", valid for {ctx.get('price_validity_days', 14)} days and subject to final confirmation "
+                "of quantity, specification and delivery terms."
+            )
+        if terms.get("lead_time_days"):
+            lines.append(f"Expected lead time is about {terms['lead_time_days']} days from order confirmation.")
+        if terms.get("condition"):
+            lines.append(f"Condition: {terms['condition']}.")
+        lines += ["", "I will confirm anything else you need in writing.", "", f"Regards,\n{ctx.get('sender_name', 'NEXUS Sourcing')}"]
+        return {"subject": f"Re: {str(ctx.get('product_category', 'your enquiry')).replace('_', ' ')}", "body": "\n".join(lines)}
+
     def _classify(self, ctx: dict, rng: random.Random) -> dict:
         text = (ctx.get("reply_text") or "").lower()
         rules = [
@@ -231,6 +251,7 @@ class MockProvider(BaseProvider):
         "sourcing": "_sourcing",
         "sales_strategy": "_strategy",
         "outreach_copy": "_outreach",
+        "reply_draft": "_reply",
         "response_classification": "_classify",
         "learning_review": "_learning",
     }

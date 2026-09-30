@@ -35,6 +35,10 @@ class PolicyContext:
 
 Rule = Callable[[ActionRequest, PolicyContext], PolicyResult | None]
 
+# Every kind of outbound message. Opt-out, duplicate, licence and fact checks
+# apply to all of them; rate limits and follow-up caps only to unsolicited mail.
+SEND_KINDS = (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP, ActionKind.SEND_REPLY)
+
 
 def _block(rule: str, reason: str, risk: RiskLevel = RiskLevel.HIGH) -> PolicyResult:
     return PolicyResult(decision=Decision.BLOCK, reasons=[reason], rule_ids=[rule], risk=risk)
@@ -101,7 +105,7 @@ def rule_license(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
     category = req.payload.get("product_category")
     if category not in {c.value for c in REGULATED_CATEGORIES}:
         return None
-    contact_kinds = (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP)
+    contact_kinds = SEND_KINDS
     commitment_kinds = (ActionKind.FINANCIAL_COMMITMENT, ActionKind.LEGAL_COMMITMENT)
     if req.kind not in contact_kinds + commitment_kinds:
         return None
@@ -128,6 +132,13 @@ def rule_rejected_by_operator(req: ActionRequest, ctx: PolicyContext) -> PolicyR
     return None
 
 
+def rule_reply_needs_human(req: ActionRequest, _ctx: PolicyContext) -> PolicyResult | None:
+    """Answers to buyers carry prices and terms: a human approves every one."""
+    if req.kind == ActionKind.SEND_REPLY:
+        return _escalate("R-REPLY-01", "replies to buyers (quotes, terms, information) need your approval", RiskLevel.MEDIUM)
+    return None
+
+
 def rule_regulated(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
     category = req.payload.get("product_category")
     regulated = category in {c.value for c in REGULATED_CATEGORIES}
@@ -136,7 +147,7 @@ def rule_regulated(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | Non
     ):
         if not ctx.settings.allow_regulated_autonomous_transactions:
             return _escalate("R-REG-01", "regulated transaction requires compliance review")
-    if regulated and req.kind in (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP):
+    if regulated and req.kind in SEND_KINDS:
         if not req.payload.get("regulatory_checked"):
             return _escalate(
                 "R-REG-02",
@@ -148,7 +159,7 @@ def rule_regulated(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | Non
 
 
 def rule_opt_out(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
-    if req.kind not in (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP):
+    if req.kind not in SEND_KINDS:
         return None
     contact_id = req.payload.get("contact_id")
     if contact_id:
@@ -170,7 +181,7 @@ def rule_opt_out(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
 
 
 def rule_duplicate(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
-    if req.kind not in (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP):
+    if req.kind not in SEND_KINDS:
         return None
     key = req.idempotency_key
     if not key:
@@ -238,14 +249,17 @@ def rule_followup_cap(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | 
     return None
 
 
-def rule_fact_validation(req: ActionRequest, _ctx: PolicyContext) -> PolicyResult | None:
-    if req.kind not in (ActionKind.SEND_OUTREACH, ActionKind.SEND_FOLLOWUP):
+def rule_fact_validation(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
+    if req.kind not in SEND_KINDS:
         return None
-    result = validate_message(
-        req.payload.get("subject", ""),
-        req.payload.get("body", ""),
-        req.payload.get("allowed_facts", {}),
-    )
+    facts = dict(req.payload.get("allowed_facts") or {})
+    # Text the operator read and approved (possibly edited) is theirs: figures
+    # in it are not model assertions. Claim checks (medical, regulatory,
+    # licence, relationship) still apply. Verified here, not trusted from payload.
+    facts["operator_approved"] = approved_for(
+        ctx.session, req.payload.get("approved_review_id"), req.idempotency_key
+    ) is not None
+    result = validate_message(req.payload.get("subject", ""), req.payload.get("body", ""), facts)
     if not result.ok:
         return PolicyResult(
             decision=Decision.BLOCK,
@@ -276,6 +290,7 @@ DEFAULT_RULES: list[Rule] = [
     rule_destructive,
     rule_commitments,
     rule_rejected_by_operator,
+    rule_reply_needs_human,
     rule_regulated,
     rule_license,
     rule_opt_out,

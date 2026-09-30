@@ -19,7 +19,10 @@ from app.models.router import ModelRouter
 from app.policies.engine import PolicyEngine
 
 
-PREVIEW_FIELDS = ("to", "subject", "body", "country", "product_category", "step", "amount_usd", "contact_id", "company_id")
+PREVIEW_FIELDS = (
+    "to", "subject", "body", "country", "product_category", "step", "amount_usd", "contact_id", "company_id",
+    "in_reply_to_message_id", "their_message", "pricing", "allowed_facts", "regulatory_checked",
+)
 
 
 def _preview(request: ActionRequest) -> dict[str, Any]:

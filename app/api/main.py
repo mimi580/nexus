@@ -119,6 +119,8 @@ class ObjectiveStatusIn(BaseModel):
 class DecisionIn(BaseModel):
     decision: str
     note: str = ""
+    subject: str | None = None  # edited draft (approve only)
+    body: str | None = None
 
 
 class OutcomeIn(BaseModel):
@@ -339,7 +341,8 @@ def decide_review(review_id: str, payload: DecisionIn, actor: str = Operator) ->
     with session_scope() as session:
         ctx = build_context(session)
         try:
-            item = queue.decide(ctx, review_id, payload.decision, payload.note, actor=actor)
+            item = queue.decide(ctx, review_id, payload.decision, payload.note, actor=actor,
+                                subject=payload.subject, body=payload.body)
         except queue.ReviewError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return queue.as_dict(item)

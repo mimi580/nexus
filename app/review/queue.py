@@ -38,7 +38,12 @@ class ReviewError(ValueError):
     pass
 
 
+EXECUTABLE_KINDS = {"outreach_approval", "reply_approval"}
+
+
 def classify(event_type: str, action_kind: str | None) -> str:
+    if action_kind == "send_reply":
+        return "reply_approval"
     if action_kind in SEND_KINDS:
         return "outreach_approval"
     if action_kind in {"financial_commitment", "legal_commitment"}:
@@ -128,8 +133,21 @@ def counts(session: Session) -> dict[str, int]:
     }
 
 
-def decide(ctx: Any, review_id: str, decision: str, note: str = "", actor: str = "operator") -> ReviewItem:
-    """Apply an operator decision. ctx is a RunContext."""
+def decide(
+    ctx: Any,
+    review_id: str,
+    decision: str,
+    note: str = "",
+    actor: str = "operator",
+    *,
+    subject: str | None = None,
+    body: str | None = None,
+) -> ReviewItem:
+    """Apply an operator decision. ctx is a RunContext.
+
+    For a proposed message, subject/body let the operator edit the draft; the
+    edited text is what gets sent (and it still passes every block rule).
+    """
     session: Session = ctx.session
     if decision not in DECISIONS:
         raise ReviewError(f"decision must be one of {sorted(DECISIONS)}")
@@ -138,11 +156,22 @@ def decide(ctx: Any, review_id: str, decision: str, note: str = "", actor: str =
         raise ReviewError(f"no review item {review_id}")
     if item.status != "pending":
         raise ReviewError(f"review item already {item.status}")
-    if decision == "approve" and item.kind != "outreach_approval":
+    if decision == "approve" and item.kind not in EXECUTABLE_KINDS:
         # Only a proposed send can be executed on approval. Everything else is
         # handled by the operator outside NEXUS and closed with 'resolve'.
         decision = "resolve"
 
+    if decision == "approve" and (subject is not None or body is not None):
+        if body is not None and not body.strip():
+            raise ReviewError("the message body cannot be empty")
+        payload = dict(item.action_payload or {})
+        if subject is not None and subject.strip() != payload.get("subject", ""):
+            payload["subject"] = subject.strip()[:300]
+            payload["operator_edited"] = True
+        if body is not None and body.strip() != (payload.get("body") or "").strip():
+            payload["body"] = body.strip()
+            payload["operator_edited"] = True
+        item.action_payload = payload
     item.status = {"approve": "approved", "reject": "rejected", "resolve": "resolved"}[decision]
     item.decided_at = ctx.now
     item.decided_by = actor
@@ -177,6 +206,16 @@ def decide(ctx: Any, review_id: str, decision: str, note: str = "", actor: str =
 
 def _requeue_send(ctx: Any, item: ReviewItem) -> dict[str, Any]:
     session: Session = ctx.session
+    if item.action_kind == "send_reply":
+        task, created = ctx.tasks.create_task(
+            agent="reply",
+            objective_id=item.objective_id,
+            task_input={"review_id": item.id},
+            priority=92,
+            idempotency_key=stable_key("review_approval", item.id),
+        )
+        session.flush()
+        return {"requeued": created, "task_id": task.id}
     original = session.get(Task, item.task_id) if item.task_id else None
     if original is None:
         return {"requeued": False, "why": "originating task not found"}
