@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "nexus-ai"
 version = "0.1.0"
@@ -19,6 +23,12 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.4", "mypy>=1.9"]
 
 [project.scripts]
 nexus = "app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.dashboard" = ["*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
