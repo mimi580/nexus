@@ -32,7 +32,7 @@ pip install -e ".[dev]"
 cp .env.example .env            # defaults run in simulation mode on SQLite
 
 python -m app.cli init-db
-python -m pytest -q             # 79 tests
+python -m pytest -q
 python -m app.cli simulate --days 10
 uvicorn app.api.main:app --reload --port 8000   # dashboard at http://localhost:8000
 ```
@@ -62,6 +62,38 @@ python -m app.cli report --window 30                        # metrics + budget s
 python scripts/worker.py --interval 300                     # continuous background loop
 ```
 
+## Licence register (medical and pharmaceutical)
+
+Regulated trade is gated on the licences you actually hold. Register each one:
+
+```bash
+python -m app.cli license add \
+  --holder "Your Company Ltd" --country Kenya \
+  --authority "Pharmacy and Poisons Board" --number "PPB/XXXX/2026" \
+  --types importer distributor \
+  --categories medical_equipment pharmaceutical \
+  --valid-from 2026-01-01 --expires 2027-12-31 \
+  --document "where the licence copy is stored"
+python -m app.cli license list
+python -m app.cli license deactivate <licence id>
+```
+
+How NEXUS uses it:
+
+- Outreach to a medical/pharma buyer goes out only when an active, unexpired
+  licence covers that buyer's country and category. Otherwise it escalates for
+  your review (rule R-REG-04); you may have a partner route.
+- A regulated financial or legal commitment outside licence coverage is blocked
+  (R-REG-05). Inside coverage it still goes to you — a licence never makes a
+  regulated transaction autonomous.
+- Emails may say "licensed importer and distributor in <country>" only when the
+  register covers that deal; the fact check blocks licence claims otherwise.
+- A daily job raises a compliance alert 45 days before expiry and again at expiry.
+
+The same operations are available over the API (`GET/POST /api/licenses`,
+`POST /api/licenses/{id}/deactivate`). Simulation runs seed a clearly fictional
+Kenya licence so both covered and uncovered markets are exercised.
+
 ## API
 
 | Method | Path | Purpose |
@@ -70,6 +102,8 @@ python scripts/worker.py --interval 300                     # continuous backgro
 | GET | `/api/state` | objectives, pipeline, tasks, budget, blocked actions, compliance, metrics |
 | POST | `/api/objectives` | create an objective (`title`, `product_categories`, `description`) |
 | POST | `/api/run` | run one orchestration pass plus due scheduled jobs |
+| GET/POST | `/api/licenses` | list or register licences |
+| POST | `/api/licenses/{id}/deactivate` | stop relying on a licence |
 | POST | `/api/control` | `paused`, `emergency_stop`, `paused_categories`, `paused_geographies` |
 | GET | `/` | dashboard |
 

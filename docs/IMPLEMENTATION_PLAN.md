@@ -32,7 +32,7 @@ objective intake (API / CLI)
         │                   │
    MemoryStore/TaskStore    └── BudgetController (reserve → commit/release)
         │
-   PolicyEngine (11 rules) ── FactCheck
+   PolicyEngine (12 rules) ── FactCheck
         │
    Execution (simulated email | SMTP adapter)
         │
@@ -99,7 +99,7 @@ from `Settings`. [9]
 
 ## 7. Policy and risk
 
-`PolicyEngine.evaluate(ActionRequest)` runs eleven rule families and returns
+`PolicyEngine.evaluate(ActionRequest)` runs twelve rule families and returns
 allow / block / escalate, with block winning over escalate:
 
 - system: emergency stop, global pause, paused category, paused geography
@@ -109,6 +109,9 @@ allow / block / escalate, with block winning over escalate:
   defaults to zero — every commitment goes to a human)
 - regulated: regulated transactions, unverified regulatory position before
   contacting a medical/pharma buyer, controlled/restricted products
+- licence coverage: medical/pharma contact outside an active licence for the
+  buyer's country and category escalates; a commitment outside coverage is
+  blocked (`app/policies/licenses.py`, `licenses` table)
 - communication: opt-out, bounce, missing address, company-level opt-out
 - duplicate outbound message
 - daily and per-contact rate limits
