@@ -23,6 +23,7 @@ PREVIEW_FIELDS = (
     "to", "subject", "body", "country", "product_category", "step", "amount_usd", "contact_id", "company_id",
     "in_reply_to_message_id", "their_message", "pricing", "allowed_facts", "regulatory_checked",
     "campaign_id", "platform", "daily_budget_usd", "ad_preview",
+    "language", "subject_english", "body_english", "their_message_english",
 )
 
 

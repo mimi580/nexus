@@ -7,6 +7,9 @@ from html import escape
 from typing import Any
 from urllib.parse import quote
 
+from app.core import languages
+from app.core.languages import t
+
 ATTRIBUTION_PARAMS = ("utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "gclid",
                       "fbclid", "nx", "nv")
 
@@ -32,7 +35,7 @@ h2{font-size:22px;margin:0 0 14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
 .card h3{margin:0 0 6px;font-size:16px}.card p{margin:0;color:var(--muted);font-size:14px}
 .price{font-size:15px;margin-top:8px}.price b{font-size:20px}
-ul.benefits{padding-left:20px;margin:0}ul.benefits li{margin:6px 0}
+ul.benefits{padding-inline-start:20px;margin:0}ul.benefits li{margin:6px 0}
 .steps{counter-reset:s;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
 .steps div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
 .steps div:before{counter-increment:s;content:counter(s);display:inline-block;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;text-align:center;line-height:28px;font-weight:700;margin-bottom:8px}
@@ -43,103 +46,124 @@ input,select,textarea{width:100%;font:inherit;padding:11px 12px;border:1px solid
 textarea{min-height:110px}
 input:focus,select:focus,textarea:focus,.btn:focus-visible{outline:3px solid #9ad3bf;outline-offset:1px}
 .consent{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--muted)}.consent input{width:auto;margin-top:4px}
-.hp{position:absolute;left:-5000px}
+.hp{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 details{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-bottom:10px}
 summary{font-weight:600;cursor:pointer}
 footer{padding:28px 0 40px;color:var(--muted);font-size:14px;border-top:1px solid var(--line);margin-top:20px}
 footer a{color:var(--muted)}
+.lang{font-size:14px;color:var(--muted);margin-inline-end:auto;margin-inline-start:14px}
+p.err{background:#fdecec;border:1px solid #f3b4b4;border-radius:8px;padding:10px 14px;color:#8a1f1f}
 @media(max-width:640px){form.enq{grid-template-columns:1fr}.hero{padding-top:28px}}
 """
 
 
-def _page(title: str, body: str, description: str = "") -> str:
+def _page(title: str, body: str, description: str = "", lang: str = "en") -> str:
+    direction = " dir='rtl'" if languages.is_rtl(lang) else ""
     return (
-        "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
+        f"<!doctype html><html lang='{escape(lang)}'{direction}><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         f"<title>{escape(title)}</title><meta name='description' content='{escape(description)}'>"
         f"<style>{STYLE}</style></head><body>{body}</body></html>"
     )
 
 
-def _header(facts: dict[str, Any], wa_link: str | None) -> str:
-    wa = f"<a class='btn wa' href='{escape(wa_link)}'>WhatsApp us</a>" if wa_link else ""
+def _lang(page: Any) -> str:
+    code = getattr(page, "language", None) or "en"
+    return code if languages.supported(code) else "en"
+
+
+def _header(facts: dict[str, Any], wa_link: str | None, lang: str = "en", alt: tuple[str, str] | None = None) -> str:
+    wa = f"<a class='btn wa' href='{escape(wa_link)}'>{t(lang, 'wa_header')}</a>" if wa_link else ""
+    other = f"<a class='lang' href='{escape(alt[0])}'>{escape(alt[1])}</a>" if alt else ""
     return (f"<header class='top'><div class='wrap'><span class='brand'>{escape(facts.get('business_name') or '')}</span>"
-            f"{wa}</div></header>")
+            f"{other}{wa}</div></header>")
 
 
-def _footer(facts: dict[str, Any]) -> str:
+def _footer(facts: dict[str, Any], lang: str = "en") -> str:
     address = escape(facts.get("business_address") or "")
     return (f"<footer><div class='wrap'><div>{escape(facts.get('business_name') or '')}"
             f"{' &middot; ' + address if address else ''}</div>"
-            "<div style='margin-top:6px'><a href='/privacy'>Privacy notice</a></div></div></footer>")
+            f"<div style='margin-top:6px'><a href='/privacy'>{t(lang, 'privacy')}</a></div></div></footer>")
 
 
-def render_landing(page: Any, params: dict[str, str], wa_link: str | None) -> str:
+def render_landing(page: Any, params: dict[str, str], wa_link: str | None, alt: tuple[str, str] | None = None,
+                   error: str | None = None) -> str:
+    """The page in its own language. `alt` is (link, label) to the same page in another language."""
     c, f = page.content or {}, page.facts or {}
+    lang = _lang(page)
+    promise = escape(languages.promise(lang, f.get("response_promise")))
+    country = escape(languages.country_name(lang, f.get("country", "")))
     hidden = "".join(
         f"<input type='hidden' name='{k}' value='{escape(params.get(k, ''))}'>" for k in ATTRIBUTION_PARAMS
     )
-    trust = [f"Serving {escape(f.get('country', ''))}", f"Reply {escape(f.get('response_promise', ''))}"]
-    if f.get("licence_statement"):
-        trust.append(escape(f["licence_statement"]))
+    trust = [t(lang, "serving", country=country), t(lang, "reply", promise=promise)]
+    licence = f.get("licence_statement") if lang == "en" else c.get("licence_statement")
+    if licence and f.get("licence_statement"):
+        trust.append(escape(licence))
     products = ""
     for p in f.get("products") or []:
-        bits = [x for x in (p.get("condition"), f"warranty: {p['warranty']}" if p.get("warranty") else None,
-                            f"MOQ {p['moq']}" if p.get("moq") else None) if x]
-        products += f"<div class='card'><h3>{escape(p['name'])}</h3><p>{escape(' · '.join(bits))}</p></div>"
+        bits = [x for x in (p.get("condition"), f"{t(lang, 'warranty')}: {p['warranty']}" if p.get("warranty") else None,
+                            f"{t(lang, 'moq')} {p['moq']}" if p.get("moq") else None) if x]
+        products += f"<div class='card'><h3 dir='auto'>{escape(p['name'])}</h3><p dir='auto'>{escape(' · '.join(bits))}</p></div>"
     price = ""
     if f.get("from_price_usd"):
-        price = (f"<p class='price'>Indicative prices from <b>USD {f['from_price_usd']:g}</b> per unit "
-                 "&mdash; your quotation depends on quantity, specification and delivery.</p>")
+        price = f"<p class='price'>{t(lang, 'price', price=format(f['from_price_usd'], 'g'))}</p>"
     benefits = "".join(f"<li>{escape(b)}</li>" for b in c.get("benefits") or [])
     faq = "".join(f"<details><summary>{escape(q.get('q', ''))}</summary><p>{escape(q.get('a', ''))}</p></details>"
-                  for q in c.get("faq") or [])
+                  for q in c.get("faq") or [] if isinstance(q, dict))
     product_options = "".join(f"<option>{escape(p['name'])}</option>" for p in f.get("products") or [])
-    wa_button = f"<a class='btn wa' href='{escape(wa_link)}'>Chat on WhatsApp</a>" if wa_link else ""
+    wa_button = f"<a class='btn wa' href='{escape(wa_link)}'>{t(lang, 'wa_chat')}</a>" if wa_link else ""
+    cta = escape(c.get("cta") or t(lang, "request_quote"))
+    problem = ""
+    if error:
+        key = languages.ERROR_KEYS.get(error)
+        problem = f"<p class='err' role='alert'>{escape(t(lang, key) if key and lang != 'en' else error)}</p>"
     body = f"""
-{_header(f, wa_link)}
+{_header(f, wa_link, lang, alt)}
 <main>
 <div class='wrap hero'>
   <h1>{escape(c.get('headline', ''))}</h1>
   <p class='sub'>{escape(c.get('subheadline', ''))}</p>
-  <div class='btns'><a class='btn primary' href='#quote'>{escape(c.get('cta') or 'Request a quotation')}</a>{wa_button}</div>
-  <div class='trust'>{''.join(f'<span>{t}</span>' for t in trust)}</div>
+  <div class='btns'><a class='btn primary' href='#quote'>{cta}</a>{wa_button}</div>
+  <div class='trust'>{''.join(f'<span>{x}</span>' for x in trust)}</div>
 </div>
-{f"<section><div class='wrap'><h2>What we supply</h2>{price}<div class='grid'>{products}</div></div></section>" if products else ''}
-{f"<section><div class='wrap'><h2>Why buyers work with us</h2><ul class='benefits'>{benefits}</ul></div></section>" if benefits else ''}
-<section><div class='wrap'><h2>How it works</h2><div class='steps'>
-  <div><b>Tell us what you need</b><p>Models, quantity and delivery location.</p></div>
-  <div><b>Get a written quotation</b><p>Price, condition, warranty, lead time and terms, {escape(f.get('response_promise', ''))}.</p></div>
-  <div><b>Confirm and receive</b><p>You only commit when you accept the quotation.</p></div>
+{f"<section><div class='wrap'><h2>{t(lang, 'what_we_supply')}</h2>{price}<div class='grid'>{products}</div></div></section>" if products else ''}
+{f"<section><div class='wrap'><h2>{t(lang, 'why_us')}</h2><ul class='benefits'>{benefits}</ul></div></section>" if benefits else ''}
+<section><div class='wrap'><h2>{t(lang, 'how_it_works')}</h2><div class='steps'>
+  <div><b>{t(lang, 'step1_t')}</b><p>{t(lang, 'step1_d')}</p></div>
+  <div><b>{t(lang, 'step2_t')}</b><p>{t(lang, 'step2_d', promise=promise)}</p></div>
+  <div><b>{t(lang, 'step3_t')}</b><p>{t(lang, 'step3_d')}</p></div>
 </div></div></section>
-<section id='quote'><div class='wrap'><h2>Request a quotation</h2>
-<form class='enq' method='post' action='/p/{escape(page.slug)}/enquiry'>
+<section id='quote'><div class='wrap'><h2>{t(lang, 'request_quote')}</h2>
+{problem}<form class='enq' method='post' action='/p/{escape(page.slug)}/enquiry'>
   {hidden}
   <div class='hp' aria-hidden='true'><label>Website<input name='website' tabindex='-1' autocomplete='off'></label></div>
-  <div><label for='n'>Your name *</label><input id='n' name='full_name' required maxlength='200' autocomplete='name'></div>
-  <div><label for='o'>Organisation *</label><input id='o' name='organisation' required maxlength='300' autocomplete='organization'></div>
-  <div><label for='e'>Work e-mail *</label><input id='e' name='email' type='email' required maxlength='200' autocomplete='email'></div>
-  <div><label for='ph'>Phone / WhatsApp</label><input id='ph' name='phone' maxlength='60' autocomplete='tel'></div>
-  <div><label for='pr'>Product</label><select id='pr' name='product'><option value=''>Any / not sure</option>{product_options}</select></div>
-  <div><label for='q'>Quantity</label><input id='q' name='quantity' type='number' min='1' max='1000000' inputmode='numeric'></div>
-  <div class='full'><label for='m'>What do you need?</label><textarea id='m' name='message' maxlength='4000' placeholder='Specification, delivery location, timing'></textarea></div>
-  <label class='consent full'><input type='checkbox' name='consent' value='yes' required> I agree to be contacted about this enquiry. See the <a href='/privacy'>privacy notice</a>.</label>
-  <div class='full'><button class='btn primary' type='submit'>{escape(c.get('cta') or 'Request a quotation')}</button></div>
+  <div><label for='n'>{t(lang, 'name')} *</label><input id='n' name='full_name' required maxlength='200' autocomplete='name'></div>
+  <div><label for='o'>{t(lang, 'organisation')} *</label><input id='o' name='organisation' required maxlength='300' autocomplete='organization'></div>
+  <div><label for='e'>{escape(t(lang, 'email'))} *</label><input id='e' name='email' type='email' required maxlength='200' autocomplete='email' dir='ltr'></div>
+  <div><label for='ph'>{t(lang, 'phone')}</label><input id='ph' name='phone' maxlength='60' autocomplete='tel' dir='ltr'></div>
+  <div><label for='pr'>{t(lang, 'product')}</label><select id='pr' name='product'><option value=''>{t(lang, 'any_product')}</option>{product_options}</select></div>
+  <div><label for='q'>{t(lang, 'quantity')}</label><input id='q' name='quantity' type='number' min='1' max='1000000' inputmode='numeric'></div>
+  <div class='full'><label for='m'>{t(lang, 'need')}</label><textarea id='m' name='message' maxlength='4000' placeholder='{escape(t(lang, 'need_ph'))}'></textarea></div>
+  <label class='consent full'><input type='checkbox' name='consent' value='yes' required> <span>{t(lang, 'consent')} <a href='/privacy'>{t(lang, 'privacy')}</a>.</span></label>
+  <div class='full'><button class='btn primary' type='submit'>{cta}</button></div>
 </form></div></section>
-{f"<section><div class='wrap'><h2>Questions</h2>{faq}</div></section>" if faq else ''}
-{f"<section><div class='wrap'><h2>About us</h2><p>{escape(c.get('about', ''))}</p></div></section>" if c.get('about') else ''}
+{f"<section><div class='wrap'><h2>{t(lang, 'questions')}</h2>{faq}</div></section>" if faq else ''}
+{f"<section><div class='wrap'><h2>{t(lang, 'about')}</h2><p>{escape(c.get('about', ''))}</p></div></section>" if c.get('about') else ''}
 </main>
-{_footer(f)}"""
-    return _page(c.get("headline") or f.get("category_title", "Quotation"), body, c.get("subheadline") or "")
+{_footer(f, lang)}"""
+    return _page(c.get("headline") or f.get("category_title", "Quotation"), body, c.get("subheadline") or "", lang)
 
 
 def render_thanks(page: Any, wa_link: str | None) -> str:
     f = page.facts or {}
-    wa = f"<p><a class='btn wa' href='{escape(wa_link)}'>Continue on WhatsApp</a></p>" if wa_link else ""
-    body = (f"{_header(f, wa_link)}<main><div class='wrap hero'><h1>Thank you &mdash; we have your enquiry</h1>"
-            f"<p class='sub'>We will reply by e-mail {escape(f.get('response_promise', ''))} with a written quotation or any questions.</p>"
-            f"{wa}</div></main>{_footer(f)}")
-    return _page("Thank you", body)
+    lang = _lang(page)
+    promise = escape(languages.promise(lang, f.get("response_promise")))
+    wa = f"<p><a class='btn wa' href='{escape(wa_link)}'>{t(lang, 'wa_continue')}</a></p>" if wa_link else ""
+    body = (f"{_header(f, wa_link, lang)}<main><div class='wrap hero'><h1>{t(lang, 'thanks_title')}</h1>"
+            f"<p class='sub'>{t(lang, 'thanks_body', promise=promise)}</p>"
+            f"{wa}</div></main>{_footer(f, lang)}")
+    return _page("Thank you" if lang == "en" else t(lang, "ack_subject"), body, "", lang)
 
 
 def render_privacy(settings: Any) -> str:
@@ -178,5 +202,8 @@ def whatsapp_link(settings: Any, page: Any | None = None) -> str | None:
     if not number:
         return None
     topic = (page.facts or {}).get("category_title", "your products").lower() if page is not None else "your products"
-    text = f"Hello, I would like a quotation for {topic}."
+    lang = _lang(page) if page is not None else "en"
+    if lang != "en":
+        topic = languages.category_name(lang, (page.facts or {}).get("category", ""))
+    text = t(lang, "wa_text", topic=topic)
     return f"https://wa.me/{number}?text={quote(text)}"

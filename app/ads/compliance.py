@@ -47,10 +47,16 @@ def ad_allowed(category: str) -> bool:
     return category not in ADS_FORBIDDEN_CATEGORIES
 
 
-def claim_issues(text: str, category: str) -> list[str]:
+def claim_issues(text: str, category: str, language: str = "en") -> list[str]:
     lowered = text.lower()
     issues = [f"banned_claim:{p}" for p in BANNED_AD_PHRASES if p in lowered]
     issues += [f"banned_claim:{p}" for p in CATEGORY_BANNED.get(category, []) if p in lowered]
+    if language != "en":  # the same rules in Arabic, Turkish and Hebrew
+        from app.core.languages import claim_phrases, normalise
+
+        kinds = ("ad", "medical", "regulatory") if category == ProductCategory.MEDICAL.value else ("ad", "new")
+        folded = normalise(text)
+        issues += [f"banned_claim:{p}" for _kind, p in claim_phrases(language, kinds) if p in folded]
     return issues
 
 
@@ -68,8 +74,9 @@ def style_issues(text: str) -> list[str]:
     return issues
 
 
-def _facts_check(texts: list[str], facts: dict[str, Any], numbers: list[Any]) -> list[str]:
+def _facts_check(texts: list[str], facts: dict[str, Any], numbers: list[Any], language: str = "en") -> list[str]:
     result = validate_message(texts[0] if texts else "", "\n".join(texts), {
+        "language": language,
         "numbers": numbers,
         "license_verified": bool(facts.get("licence_statement")),
         "regulatory_verified": False,
@@ -78,7 +85,8 @@ def _facts_check(texts: list[str], facts: dict[str, Any], numbers: list[Any]) ->
     return list(result.unsupported)
 
 
-def check_google(content: dict[str, Any], category: str, facts: dict[str, Any], numbers: list[Any]) -> list[str]:
+def check_google(content: dict[str, Any], category: str, facts: dict[str, Any], numbers: list[Any],
+                 language: str = "en") -> list[str]:
     heads = [h for h in content.get("headlines") or [] if h]
     descs = [d for d in content.get("descriptions") or [] if d]
     issues = []
@@ -92,12 +100,13 @@ def check_google(content: dict[str, Any], category: str, facts: dict[str, Any], 
         issues.append("google: duplicate headlines")
     for text in heads + descs:
         issues += style_issues(text)
-    issues += claim_issues("\n".join(heads + descs), category)
-    issues += _facts_check(heads + descs, facts, numbers)
+    issues += claim_issues("\n".join(heads + descs), category, language)
+    issues += _facts_check(heads + descs, facts, numbers, language)
     return issues
 
 
-def check_meta(content: dict[str, Any], category: str, facts: dict[str, Any], numbers: list[Any]) -> list[str]:
+def check_meta(content: dict[str, Any], category: str, facts: dict[str, Any], numbers: list[Any],
+               language: str = "en") -> list[str]:
     issues = []
     for field, limit in META_LIMITS.items():
         value = content.get(field) or ""
@@ -110,17 +119,25 @@ def check_meta(content: dict[str, Any], category: str, facts: dict[str, Any], nu
     texts = [content.get("headline") or "", content.get("primary_text") or "", content.get("description") or ""]
     for text in texts:
         issues += style_issues(text)
-    issues += claim_issues("\n".join(texts), category)
-    issues += _facts_check([t for t in texts if t], facts, numbers)
+    issues += claim_issues("\n".join(texts), category, language)
+    issues += _facts_check([t for t in texts if t], facts, numbers, language)
     return issues
 
 
+def english_meaning_issues(text: str, category: str, facts: dict[str, Any], numbers: list[Any]) -> list[str]:
+    """Claim and fact checks on the English back-translation of an ad written in another language.
+
+    Length limits are not applied here: they belong to the text that actually runs.
+    """
+    return claim_issues(text, category) + _facts_check([text], facts, numbers)
+
+
 def check_keywords(keywords: list[str]) -> tuple[list[str], list[str]]:
-    """(accepted, rejected) keywords: plain words, 1-6 words, no competitor names of banned sort."""
+    """(accepted, rejected) keywords: plain words in any script, 1-6 words, no junk-intent terms."""
     accepted, rejected = [], []
     for kw in keywords:
         kw = " ".join(str(kw).lower().split())
-        if not kw or len(kw) > 80 or len(kw.split()) > 6 or re.search(r"[^a-z0-9 +\-.'&]", kw):
+        if not kw or len(kw) > 80 or len(kw.split()) > 6 or re.search(r"[^\w +\-.'&]", kw):
             rejected.append(kw)
             continue
         if any(p in kw for p in ("free", "crack", "torrent", "job", "jobs", "salary", "repair", "driver download")):

@@ -288,7 +288,16 @@ def rule_fact_validation(req: ActionRequest, ctx: PolicyContext) -> PolicyResult
     facts["operator_approved"] = approved_for(
         ctx.session, req.payload.get("approved_review_id"), req.idempotency_key
     ) is not None
+    language = req.payload.get("language") or "en"
+    facts["language"] = language
     result = validate_message(req.payload.get("subject", ""), req.payload.get("body", ""), facts)
+    if result.ok and language != "en" and not facts["operator_approved"]:
+        # A message NEXUS wrote in another language must come with an independent
+        # English back-translation, and that translation must pass the English checks too.
+        english = req.payload.get("english_check")
+        if not english:
+            return _block("R-FACT-03", f"message in '{language}' has no verified English back-translation")
+        result = validate_message("", english, {**facts, "language": "en"})
     if not result.ok:
         return PolicyResult(
             decision=Decision.BLOCK,

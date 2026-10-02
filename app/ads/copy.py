@@ -17,6 +17,7 @@ import re
 from typing import Any
 
 from app.ads.compliance import GOOGLE_LIMITS, META_LIMITS, check_google, check_keywords, check_meta
+from app.core import languages
 from app.core.types import ProductCategory
 from app.site.pages import allowed_numbers
 
@@ -196,21 +197,42 @@ def meta_template(facts: dict[str, Any], angle: str) -> dict[str, Any]:
             "card": {"headline": headline, "subline": opener[:120], "cta": "Get a quotation"}}
 
 
-def keyword_plan(facts: dict[str, Any], extra: list[str] | None = None) -> tuple[list[str], list[str], list[str]]:
-    """(keywords, negatives, rejected suggestions)."""
+def keyword_plan(facts: dict[str, Any], extra: list[str] | None = None,
+                 language: str = "en") -> tuple[list[str], list[str], list[str]]:
+    """(keywords, negatives, rejected suggestions), in the campaign's language.
+
+    Arabic, Turkish and Hebrew campaigns use the local keyword bank when one
+    exists for the product line; otherwise the English bank (many buyers in
+    these markets also search in English).
+    """
     cat, country = facts["category"], facts["country"].lower()
-    base = [k.format(country=country) for k in KEYWORDS.get(cat, [])]
+    local = languages.AD_KEYWORDS.get(language, {}).get(cat) if language != "en" else None
+    if local:
+        place = languages.country_name(language, facts["country"])
+        base = [k.format(country=place) for k in local]
+        local_negatives = languages.AD_NEGATIVES.get(language, [])
+    else:
+        base = [k.format(country=country) for k in KEYWORDS.get(cat, [])]
+        local_negatives = []
     accepted, rejected = check_keywords(base + list(extra or []))
-    negatives = NEGATIVES_COMMON + NEGATIVES.get(cat, [])
+    negatives = NEGATIVES_COMMON + NEGATIVES.get(cat, []) + local_negatives
     accepted = [k for k in accepted if not any(re.search(rf"\b{re.escape(n)}\b", k) for n in negatives)]
     return accepted[:40], negatives, rejected
 
 
-def check_variant(platform: str, content: dict[str, Any], facts: dict[str, Any]) -> list[str]:
+def check_variant(platform: str, content: dict[str, Any], facts: dict[str, Any], language: str = "en") -> list[str]:
     numbers = allowed_numbers(facts)
     if platform == "google":
-        return check_google(content, facts["category"], facts, numbers)
-    return check_meta(content, facts["category"], facts, numbers)
+        return check_google(content, facts["category"], facts, numbers, language)
+    return check_meta(content, facts["category"], facts, numbers, language)
+
+
+TRANSLATED_FIELDS = {"google": ("headlines", "descriptions"), "meta": ("primary_text", "headline", "description")}
+TRANSLATION_LIMITS = {
+    "google": {"each headline": GOOGLE_LIMITS["headline"], "each description": GOOGLE_LIMITS["description"]},
+    "meta": {"primary_text": META_LIMITS["primary_text"], "headline": META_LIMITS["headline"],
+             "description": META_LIMITS["description"]},
+}
 
 
 def template(platform: str, facts: dict[str, Any], angle: str) -> dict[str, Any]:

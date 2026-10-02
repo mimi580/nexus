@@ -12,6 +12,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.languages import COUNTRY_LANGUAGES, LANGUAGES
 from app.core.types import ProductCategory
 from app.database.models import SystemState
 from app.policies.licenses import REGIONS, canonical_country
@@ -79,6 +80,9 @@ DEFAULTS: dict[str, Any] = {
         ProductCategory.PHARMA.value: "generic essential medicines and medical consumables for institutional supply",
         ProductCategory.SERVER_IT.value: "refurbished enterprise servers (Dell PowerEdge, HPE ProLiant), storage and networking equipment",
     },
+    # Language NEXUS writes in per country (e-mails, landing pages, ads): "en", "ar", "tr" or "he".
+    # Countries not listed use English. Set a country to "en" if your buyers there prefer English.
+    "languages": dict(COUNTRY_LANGUAGES),
     "rfq_destination": "Nairobi, Kenya (CIF Mombasa or DAP Nairobi)",
     "supplier_min_score": 0.5,
 }
@@ -149,6 +153,16 @@ def update(session: Session, changes: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(value, dict):
                 raise CommercialSettingsError(f"{key} must be an object")
             current[key] = {**current[key], **value}
+        elif key == "languages":
+            if not isinstance(value, dict):
+                raise CommercialSettingsError("languages must be an object keyed by country")
+            for country, code in value.items():
+                if code is None:
+                    current[key].pop(canonical_country(country), None)
+                    continue
+                if code not in LANGUAGES:
+                    raise CommercialSettingsError(f"unknown language {code!r}; valid: {sorted(LANGUAGES)}")
+                current[key][canonical_country(country)] = code
         elif key == "rfq_destination":
             if not isinstance(value, str) or not value.strip():
                 raise CommercialSettingsError("rfq_destination is a place description, e.g. 'Nairobi, Kenya'")

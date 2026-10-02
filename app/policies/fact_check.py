@@ -104,6 +104,20 @@ def validate_message(
             if token in lowered:
                 unsupported.append(f"license_claim:{token}")
 
+    # The same claim rules in the message's own language (Arabic, Turkish, Hebrew).
+    language = facts.get("language")
+    if language and language != "en":
+        from app.core.languages import claim_phrases, normalise
+
+        kinds = ["medical"]
+        kinds += [] if facts.get("regulatory_verified") else ["regulatory"]
+        kinds += [] if facts.get("relationship_verified") else ["relationship"]
+        kinds += [] if facts.get("license_verified") else ["license"]
+        folded = normalise(text)
+        for kind, phrase in claim_phrases(language, tuple(kinds)):
+            if phrase in folded:
+                unsupported.append(f"{kind}_claim:{phrase}")
+
     if facts.get("operator_approved"):
         return FactCheckResult(ok=not unsupported, unsupported=unsupported, checked_numbers=[])
 

@@ -145,6 +145,8 @@ def sync_lead_status(session, opportunity: Opportunity) -> None:
     session.flush()
 
 
+from app.core import languages  # noqa: E402
+
 ACK_TEMPLATE = """Dear {name},
 
 Thank you for your enquiry about {topic}{qty}. We have received it and will reply {promise} with a written quotation or any questions we have.
@@ -198,25 +200,36 @@ class InboundLeadAgent(BaseAgent):
         ctx.session.add(enquiry)
         ctx.session.flush()
 
-        # Acknowledge at once: no prices, no promises beyond the reply time.
+        # Acknowledge at once, in the language of the page they enquired on: no prices,
+        # no promises beyond the reply time. The wording is fixed (not AI-written).
+        page = ctx.session.get(LandingPage, lead.landing_page_id) if lead.landing_page_id else None
+        language = (page.language if page is not None and languages.supported(page.language) else None) or "en"
         sender = ctx.settings.email_sender_name or ctx.settings.business_name or "NEXUS Sourcing"
-        body = ACK_TEMPLATE.format(
-            name=lead.full_name.split()[0], topic=lead.product_category.replace("_", " "),
-            qty=f" ({lead.quantity} units)" if lead.quantity else "", promise=ctx.settings.lead_response_promise,
-            sender=sender,
-        )
+
+        def ack(code: str) -> str:
+            topic = (lead.product_category.replace("_", " ") if code == "en"
+                     else languages.category_name(code, lead.product_category))
+            return languages.t(
+                code, "ack", name=lead.full_name.split()[0], topic=topic,
+                qty=f" ({lead.quantity} {languages.t(code, 'units')})" if lead.quantity else "",
+                promise=languages.promise(code, ctx.settings.lead_response_promise), sender=sender)
+
+        body, subject = ack(language), languages.t(language, "ack_subject")
         request = ActionRequest(
             kind=ActionKind.SEND_ACKNOWLEDGEMENT, summary=f"acknowledge enquiry from {lead.full_name}",
             payload={"contact_id": contact.id, "company_id": company.id, "to": lead.email, "personalized": True,
-                     "subject": "We have your enquiry", "body": body,
-                     "allowed_facts": {"numbers": [lead.quantity] if lead.quantity else []}},
+                     "subject": subject, "body": body, "language": language,
+                     "english_check": ack("en") if language != "en" else None,
+                     "allowed_facts": {"numbers": ([lead.quantity] if lead.quantity else [])
+                                       + re.findall(r"\d+", ctx.settings.lead_response_promise or "")}},
             estimated_cost_usd=0.01, cost_category="email", idempotency_key=stable_key("ack", lead.id),
             opportunity_id=opportunity.id,
         )
         decision = ctx.authorize(request)
         if decision.decision == Decision.ALLOW:
-            message = send_email(ctx, contact, "We have your enquiry", body, request.idempotency_key,
-                                 opportunity=opportunity, fact_check={"validated": True})
+            message = send_email(ctx, contact, subject, body, request.idempotency_key,
+                                 opportunity=opportunity, fact_check={"validated": True, "language": language},
+                                 language=language)
             if message.status == "sent":
                 lead.status = "acknowledged"
         notify(ctx, f"New enquiry: {lead.organisation} ({lead.country})",

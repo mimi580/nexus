@@ -137,6 +137,7 @@ class DecisionIn(BaseModel):
     note: str = ""
     subject: str | None = None  # edited draft (approve only)
     body: str | None = None
+    body_english: str | None = None  # edited English version of a draft in another language
 
 
 class OutcomeIn(BaseModel):
@@ -364,7 +365,7 @@ def decide_review(review_id: str, payload: DecisionIn, actor: str = Operator) ->
         ctx = build_context(session)
         try:
             item = queue.decide(ctx, review_id, payload.decision, payload.note, actor=actor,
-                                subject=payload.subject, body=payload.body)
+                                subject=payload.subject, body=payload.body, body_english=payload.body_english)
         except queue.ReviewError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return queue.as_dict(item)
@@ -656,6 +657,19 @@ def _published(session, slug: str):
     return page
 
 
+def _other_language(session, page) -> tuple[str, str] | None:
+    """Link to the same page in another language, if one is published."""
+    from app.core.languages import LANGUAGES
+    from app.database.models import LandingPage
+
+    sibling = session.scalar(select(LandingPage).where(
+        LandingPage.product_category == page.product_category, LandingPage.country == page.country,
+        LandingPage.status == "published", LandingPage.language != page.language))
+    if sibling is None:
+        return None
+    return f"/p/{sibling.slug}", LANGUAGES.get(sibling.language, LANGUAGES["en"])["native"]
+
+
 def _wa_route(slug: str, params: dict[str, str]) -> str | None:
     from urllib.parse import urlencode
 
@@ -692,7 +706,7 @@ def landing_page(slug: str, request: Request) -> str:
         page = _published(session, slug)
         if not is_bot(request.headers.get("user-agent", "")):
             record_event(session, page, "view", params, _visitor(request, get_settings()))
-        return render_landing(page, params, _wa_route(slug, params))
+        return render_landing(page, params, _wa_route(slug, params), _other_language(session, page))
 
 
 @app.get("/p/{slug}/wa")
@@ -732,8 +746,7 @@ async def landing_enquiry(slug: str, request: Request):
         try:
             intake(ctx, page, form, _visitor(request, settings))
         except LeadRejected as exc:
-            html = render_landing(page, params, _wa_route(slug, params)).replace(
-                "<form class='enq'", f"<p class='err' role='alert'>{_esc(str(exc))}</p><form class='enq'", 1)
+            html = render_landing(page, params, _wa_route(slug, params), _other_language(session, page), error=str(exc))
             return HTMLResponse(html, status_code=422)
         return HTMLResponse(render_thanks(page, _wa_route(slug, params)))
 
@@ -766,7 +779,7 @@ def _campaign_row(session, c) -> dict:
     stats = variant_stats(session, c.id)
     return {
         "id": c.id, "platform": c.platform, "name": c.name, "category": c.product_category, "countries": c.countries,
-        "status": c.status, "status_reason": c.status_reason, "daily_budget_usd": c.daily_budget_usd,
+        "language": c.language, "status": c.status, "status_reason": c.status_reason, "daily_budget_usd": c.daily_budget_usd,
         "launched_at": c.launched_at.isoformat() if c.launched_at else None, **t,
         "ctr": round(t["clicks"] / t["impressions"], 4) if t["impressions"] else None,
         "cost_per_lead": round(t["spend_usd"] / t["leads"], 2) if t["leads"] else None,
@@ -913,7 +926,8 @@ def list_pages(_: str = Operator) -> list[dict]:
             events = dict(session.execute(select(PageEvent.kind, func.count()).where(PageEvent.landing_page_id == p.id)
                                           .group_by(PageEvent.kind)).all())
             leads = session.scalar(select(func.count()).select_from(Lead).where(Lead.landing_page_id == p.id, Lead.status != "spam"))
-            rows.append({"slug": p.slug, "category": p.product_category, "country": p.country, "status": p.status,
+            rows.append({"slug": p.slug, "category": p.product_category, "country": p.country, "language": p.language,
+                         "status": p.status,
                          "version": p.version, "headline": (p.content or {}).get("headline"),
                          "url": f"{settings.site_url}/p/{p.slug}" if settings.site_url else f"/p/{p.slug}",
                          "views": events.get("view", 0), "whatsapp": events.get("whatsapp", 0), "leads": leads,
@@ -930,7 +944,10 @@ def publish_page(payload: dict = Body(...), actor: str = Operator) -> dict:
         raise HTTPException(status_code=422, detail="product_category and country are required")
     with session_scope() as session:
         ctx = build_context(session)
-        result = LandingPageAgent().run(ctx, {"product_category": category, "country": country})
+        task_input = {"product_category": category, "country": country}
+        if payload.get("language"):
+            task_input["language"] = payload["language"]
+        result = LandingPageAgent().run(ctx, task_input)
         if not result.ok:
             raise HTTPException(status_code=422, detail=result.error)
         return result.output

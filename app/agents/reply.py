@@ -13,6 +13,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents.base import BaseAgent
+from app.agents.translate import back_translate, final_text, flatten
+from app.core import languages
 from app.commercial import settings as commercial
 from app.core.context import RunContext
 from app.core.ids import stable_key
@@ -95,6 +97,8 @@ def draft_reply(agent: BaseAgent, ctx: RunContext, message: Message, opportunity
     if pricing:
         facts["indicative_unit_price_usd"] = pricing["suggested_unit_price_usd"]
         facts["price_validity_days"] = QUOTE_VALIDITY_DAYS
+    market_language = languages.language_for(ctx.session, company.country if company else None)
+    facts["market_language"] = market_language
     data, cost = agent.ask(
         ctx,
         (
@@ -102,7 +106,11 @@ def draft_reply(agent: BaseAgent, ctx: RunContext, message: Message, opportunity
             "If an indicative unit price is provided, present it as indicative, in USD, valid for the stated "
             "number of days and subject to final confirmation of quantity, specification and delivery terms. "
             "Do not invent specifications, certifications, stock levels, delivery dates or discounts. If they "
-            "ask for something not in the facts, say you will confirm it. Return {'subject','body'}."
+            "ask for something not in the facts, say you will confirm it. Write the reply in the language "
+            "their message is written in (English, Arabic, Turkish or Hebrew); keep product and brand names "
+            "and 'USD' in Latin letters and use Western digits. Return {'subject','body','language' (en, ar, "
+            "tr or he),'their_message_english' (a literal English translation of their message, or null if "
+            "it is already in English)}."
         ),
         facts,
         task_type="reply_draft",
@@ -111,6 +119,11 @@ def draft_reply(agent: BaseAgent, ctx: RunContext, message: Message, opportunity
     body = (data.get("body") or "").strip()
     if not body:
         return False
+    language = data.get("language") if languages.supported(data.get("language")) else market_language
+    subject = (data.get("subject") or f"Re: {message.subject or 'your enquiry'}")[:300]
+    english: dict = {}
+    if language != languages.ENGLISH:
+        english, _ = back_translate(agent, ctx, {"subject": subject, "body": body}, language)
     numbers = [n for n in (
         facts.get("quantity"), terms.get("lead_time_days"), facts.get("indicative_unit_price_usd"),
         facts.get("price_validity_days"),
@@ -123,8 +136,13 @@ def draft_reply(agent: BaseAgent, ctx: RunContext, message: Message, opportunity
             "company_id": opportunity.company_id,
             "opportunity_id": opportunity.id,
             "to": contact.email,
-            "subject": (data.get("subject") or f"Re: {message.subject or 'your enquiry'}")[:300],
+            "subject": subject,
             "body": body,
+            "language": language,
+            "english_check": flatten(english) or None,
+            "subject_english": english.get("subject"),
+            "body_english": english.get("body"),
+            "their_message_english": data.get("their_message_english") or None,
             "personalized": True,
             "product_category": opportunity.product_category,
             "country": company.country if company else None,
@@ -164,6 +182,8 @@ class ReplyAgent(BaseAgent):
             return self.fail("opportunity or contact missing")
         inbound = ctx.session.get(Message, payload.get("in_reply_to_message_id")) if payload.get("in_reply_to_message_id") else None
 
+        language = payload.get("language") or languages.ENGLISH
+        subject, body, _ = final_text(self, ctx, payload)
         request = ActionRequest(
             kind=ActionKind.SEND_REPLY,
             summary=f"approved reply to {contact.full_name}",
@@ -172,8 +192,9 @@ class ReplyAgent(BaseAgent):
                 "company_id": opportunity.company_id,
                 "opportunity_id": opportunity.id,
                 "to": contact.email,
-                "subject": payload.get("subject", ""),
-                "body": payload.get("body", ""),
+                "subject": subject,
+                "body": body,
+                "language": language,
                 "personalized": True,
                 "product_category": opportunity.product_category,
                 "country": payload.get("country"),
@@ -192,8 +213,8 @@ class ReplyAgent(BaseAgent):
             return self.ok(output={"sent": False, "reasons": decision.reasons}, notes=["approved reply was blocked"])
         message = OutreachAgent()._deliver(
             ctx, opportunity, contact, request.payload["subject"], request.payload["body"],
-            item.review_key, -1, {"validated": True, "operator_approved": True},
-            in_reply_to=inbound.provider_message_id if inbound is not None else None,
+            item.review_key, -1, {"validated": True, "operator_approved": True, "language": language},
+            in_reply_to=inbound.provider_message_id if inbound is not None else None, language=language,
         )
         if message.status != "sent":
             return self.fail(f"send failed: {message.error}")

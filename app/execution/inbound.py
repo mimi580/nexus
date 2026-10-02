@@ -22,6 +22,8 @@ from app.core.config import Settings
 from app.core.ids import stable_key
 from app.database.models import Contact, FollowUp, Message, Opportunity
 
+from app.core.languages import opt_out_in  # noqa: E402
+
 OPT_OUT_RE = re.compile(r"\b(unsubscribe|remove me|opt[ -]?out|stop (?:emailing|contacting|sending))\b", re.I)
 BOUNCE_SENDERS = ("mailer-daemon", "postmaster", "mail delivery")
 BOUNCE_SUBJECTS = ("undeliver", "delivery status notification", "returned mail", "delivery failure", "failure notice", "mail delivery failed")
@@ -212,7 +214,8 @@ def ingest(ctx: Any, mails: list[InboundMail]) -> dict[str, int]:
             counts["received"] += 1
 
         # Deterministic opt-out, whatever the classifier later says.
-        if contact is not None and OPT_OUT_RE.search(f"{mail.subject}\n{mail.text[:500]}"):
+        head = f"{mail.subject}\n{mail.text[:500]}"
+        if contact is not None and (OPT_OUT_RE.search(head) or opt_out_in(head)):
             ctx.memory.opt_out_contact(contact.id, reason="unsubscribe")
             _stop_followups(ctx, contact.id, "opted out")
             counts["opt_outs"] += 1

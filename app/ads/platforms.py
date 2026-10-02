@@ -22,6 +22,7 @@ import httpx
 
 from app.core.config import Settings
 from app.core.ids import stable_key
+from app.core.languages import LANGUAGES
 from app.tools.search import COUNTRY_CODES
 
 # ISO 3166-1 numeric codes: Google geo target constants for countries are 2000 + this.
@@ -198,7 +199,9 @@ class GoogleAdsPlatform:
         }}])[0]
         criteria = [{"create": {"campaign": campaign, "location": {"geoTargetConstant": f"geoTargetConstants/{2000 + ISO_NUMERIC[country]}"}}}
                     for country in launch.countries if country in ISO_NUMERIC]
-        criteria.append({"create": {"campaign": campaign, "language": {"languageConstant": "languageConstants/1000"}}})
+        # English always (many buyers browse in English), plus the campaign's own language.
+        for constant in sorted({1000, LANGUAGES.get(launch.language, LANGUAGES["en"])["google_language"]}):
+            criteria.append({"create": {"campaign": campaign, "language": {"languageConstant": f"languageConstants/{constant}"}}})
         criteria += [{"create": {"campaign": campaign, "negative": True, "keyword": {"text": t, "matchType": "PHRASE"}}}
                      for t in launch.negative_keywords]
         self._mutate("campaignCriteria", criteria)

@@ -214,7 +214,8 @@ class MockProvider(BaseProvider):
         if terms.get("condition"):
             lines.append(f"Condition: {terms['condition']}.")
         lines += ["", "I will confirm anything else you need in writing.", "", f"Regards,\n{ctx.get('sender_name', 'NEXUS Sourcing')}"]
-        return {"subject": f"Re: {str(ctx.get('product_category', 'your enquiry')).replace('_', ' ')}", "body": "\n".join(lines)}
+        return {"subject": f"Re: {str(ctx.get('product_category', 'your enquiry')).replace('_', ' ')}", "body": "\n".join(lines),
+                "language": "en", "their_message_english": None}
 
     @staticmethod
     def _slug(name: str) -> str:
@@ -339,6 +340,11 @@ class MockProvider(BaseProvider):
         extra = [k.format(country=facts["country"].lower()) for k in KEYWORDS.get(facts["category"], [])][:3]
         return {"variants": variants, "keywords": extra + ["free laptops"]}
 
+    def _translation(self, ctx: dict, rng: random.Random) -> dict:
+        # The mock does not translate: text passes through unchanged, so the
+        # language pipeline (checks, review fields, layout) can be exercised offline.
+        return {"fields": ctx.get("fields") or {}}
+
     HANDLERS = {
         "market_research": "_market_research",
         "prospect_discovery": "_prospects",
@@ -357,6 +363,7 @@ class MockProvider(BaseProvider):
         "response_classification": "_classify",
         "learning_review": "_learning",
         "landing_copy": "_landing_copy",
+        "translation": "_translation",
         "ad_copy": "_ad_copy",
     }
 

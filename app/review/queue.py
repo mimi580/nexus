@@ -150,6 +150,7 @@ def decide(
     *,
     subject: str | None = None,
     body: str | None = None,
+    body_english: str | None = None,
 ) -> ReviewItem:
     """Apply an operator decision. ctx is a RunContext.
 
@@ -169,6 +170,16 @@ def decide(
         # handled by the operator outside NEXUS and closed with 'resolve'.
         decision = "resolve"
 
+    if decision == "approve" and body_english is not None and body_english.strip():
+        # A draft in Arabic, Turkish or Hebrew is edited through its English version:
+        # the edited English is translated into the buyer's language when it is sent.
+        payload = dict(item.action_payload or {})
+        if (payload.get("language") or "en") != "en" and body_english.strip() != (payload.get("body_english") or "").strip():
+            payload["body_english"] = body_english.strip()
+            payload["retranslate"] = True
+            payload["operator_edited"] = True
+            item.action_payload = payload
+        subject = body = None  # the foreign-language text is not edited directly
     if decision == "approve" and (subject is not None or body is not None):
         if body is not None and not body.strip():
             raise ReviewError("the message body cannot be empty")

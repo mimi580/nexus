@@ -351,6 +351,8 @@ async function loadReviews() {
     const a = i.action || {}; const o = i.opportunity;
     const isSend = ["outreach_approval", "reply_approval", "supplier_rfq_approval"].includes(i.kind);
     const isAd = i.kind === "ad_campaign";
+    const foreign = a.language && a.language !== "en";
+    const langName = { ar: "Arabic", tr: "Turkish", he: "Hebrew" }[a.language] || a.language;
     const p = a.pricing;
     const decided = i.status !== "pending";
     return `<div class="card" data-id="${esc(i.id)}">
@@ -358,7 +360,7 @@ async function loadReviews() {
       <h3>${esc(i.title)}</h3>
       ${o ? `<div class="small muted">${esc(o.company)} · ${esc(o.country)} · ${words(o.category)} · stage ${words(o.stage)}</div>${econLine(o.economics)}` : ""}
       ${(i.reasons || []).length ? `<ul style="margin-top:6px">${i.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
-      ${a.their_message ? `<div class="small muted" style="margin-top:6px">They wrote:</div><div class="draft">${esc(a.their_message)}</div>` : (i.last_reply ? `<div class="small muted">Their latest reply:</div><div class="draft">${esc(i.last_reply.body)}</div>` : "")}
+      ${a.their_message ? `<div class="small muted" style="margin-top:6px">They wrote:</div><div class="draft" dir="auto">${esc(a.their_message)}</div>${a.their_message_english ? `<div class="small muted">In English:</div><div class="draft">${esc(a.their_message_english)}</div>` : ""}` : (i.last_reply ? `<div class="small muted">Their latest reply:</div><div class="draft">${esc(i.last_reply.body)}</div>` : "")}
       ${(a.offers || []).length ? `<div class="small muted" style="margin-top:6px">Lines read from the e-mail — check each against the message before activating:</div>
         <div class="scroll"><table><tr><th>Product</th><th>Unit cost</th><th>MOQ / available</th><th>Terms</th><th>Documents</th></tr>
         ${a.offers.map((o) => `<tr><td>${esc(o.product_name)}<div class="small muted">${esc(o.condition || "")}</div></td>
@@ -367,10 +369,14 @@ async function loadReviews() {
           <td class="small">${esc((o.documents || []).join(", ") || "none stated")}</td></tr>`).join("")}</table></div>` : ""}
       ${isAd && a.ad_preview ? `<div class="small muted" style="margin-top:6px">The ads, as they will run:</div><div class="draft">${esc(a.ad_preview)}</div>` : ""}
       ${p ? `<div class="draft small">Suggested price <b>${money(p.suggested_unit_price_usd)}</b>/unit for ${esc(p.quantity)} units · landed cost ${money(p.unit_landed_cost_usd)}/unit · floor at ${esc(p.min_margin_pct)}% margin ${money(p.floor_unit_price_usd)} · price book ${range(p.price_book_unit_usd)}<br><span class="muted">${esc(p.note)}</span></div>` : ""}
-      ${a.body && isSend && !decided ? `<div class="small muted" style="margin-top:6px">To ${esc(a.to || "")} — edit before approving if needed:</div>
+      ${a.body && isSend && !decided && foreign ? `<div class="small muted" style="margin-top:6px">To ${esc(a.to || "")} — written in ${esc(langName)}:</div>
+        <div class="draft" dir="auto"><b>${esc(a.subject || "")}</b>\n${esc(a.body)}</div>
+        <div class="small muted" style="margin-top:6px">English version (checked translation). Edit this if needed; your edit is translated into ${esc(langName)} when sent:</div>
+        <textarea class="edit-english" style="min-height:200px">${esc(a.body_english || "")}</textarea>` : ""}
+      ${a.body && isSend && !decided && !foreign ? `<div class="small muted" style="margin-top:6px">To ${esc(a.to || "")} — edit before approving if needed:</div>
         <input class="edit-subject" value="${esc(a.subject || "")}" style="width:100%;margin:6px 0">
         <textarea class="edit-body" style="min-height:200px">${esc(a.body)}</textarea>` : ""}
-      ${a.body && (!isSend || decided) ? `<div class="small muted" style="margin-top:6px">To ${esc(a.to || a.from || "")}${a.subject ? " · " + esc(a.subject) : ""}</div><div class="draft">${esc(a.body)}</div>` : ""}
+      ${a.body && (!isSend || decided) ? `<div class="small muted" style="margin-top:6px">To ${esc(a.to || a.from || "")}${a.subject ? " · " + esc(a.subject) : ""}</div><div class="draft" dir="auto">${esc(a.body)}</div>${foreign && a.body_english ? `<div class="small muted">In English:</div><div class="draft">${esc(a.body_english)}</div>` : ""}` : ""}
       ${decided ? `<div class="small muted">${esc(i.status)} by ${esc(i.decided_by)} ${esc((i.decided_at || "").slice(0, 16).replace("T", " "))}${i.decision_note ? " · " + esc(i.decision_note) : ""}</div>` : `
       <textarea class="note" placeholder="Note (optional): why, what you agreed, next step"></textarea>
       <div class="row" style="margin-top:8px">
@@ -384,6 +390,8 @@ async function loadReviews() {
     const payload = { decision: btn.dataset.d, note: card.querySelector("textarea.note").value };
     const subj = card.querySelector(".edit-subject"); const body = card.querySelector(".edit-body");
     if (btn.dataset.d === "approve" && body) { payload.body = body.value; payload.subject = subj ? subj.value : null; }
+    const eng = card.querySelector(".edit-english");
+    if (btn.dataset.d === "approve" && eng) payload.body_english = eng.value;
     btn.disabled = true;
     act(() => api(`/api/reviews/${card.dataset.id}/decision`, { method: "POST", body: JSON.stringify(payload) }), "Decision recorded").then(loadReviews);
   });
@@ -504,7 +512,7 @@ const AD_CATS = CATEGORIES.filter((c) => c !== "pharmaceutical");
 el("ad-plan").onclick = () => act(() => api("/api/ads/plan", { method: "POST", body: JSON.stringify({
   platform: el("ad-platform").value || null, product_category: el("ad-cat").value || null, country: el("ad-country").value.trim() || null }) }), "Planning queued; proposals appear in Reviews after the next pass");
 function adVariant(c, v) {
-  const x = v.content || {};
+  const x = { ...(v.content || {}), ...((v.content || {}).english || {}) };  // English source for ads in other languages
   const text = c.platform === "google" ? `${esc((x.headlines || []).slice(0, 4).join(" | "))}<div class="muted">${esc((x.descriptions || [])[0] || "")}</div>`
     : `<b>${esc(x.headline || "")}</b><div class="muted">${esc((x.primary_text || "").slice(0, 180))}</div>`;
   return `<tr><td>${words(v.angle)}<div class="small muted">${esc(v.key)} · ${esc(v.status)}</div>${v.asset_id ? `<a class="small" href="/a/${esc(v.asset_id)}" target="_blank" rel="noopener">image</a>` : ""}</td>
@@ -514,7 +522,7 @@ function adVariant(c, v) {
 async function loadAds() {
   const [camps, assets] = await Promise.all([api("/api/ads/campaigns"), api("/api/ads/assets")]);
   el("ad-list").innerHTML = camps.length ? camps.map((c) => `<section class="card" data-id="${esc(c.id)}" style="margin-bottom:14px">
-    <div class="kind">${esc(c.platform)} · ${words(c.status)}${c.status_reason ? " · " + esc(c.status_reason) : ""}</div>
+    <div class="kind">${esc(c.platform)} · ${esc(({ ar: "Arabic", tr: "Turkish", he: "Hebrew", en: "English" })[c.language] || c.language || "English")} · ${words(c.status)}${c.status_reason ? " · " + esc(c.status_reason) : ""}</div>
     <h3>${esc(c.name)}</h3>
     <div class="small">Budget <b>${money(c.daily_budget_usd)}/day</b> · spent ${money(c.spend_usd)} · ${c.impressions} impressions · ${c.clicks} clicks (CTR ${c.ctr == null ? "—" : pct(c.ctr)}) ·
       <b>${c.leads} enquiries</b> (${c.lead_rate == null ? "—" : pct(c.lead_rate)} of clicks) · cost per enquiry ${c.cost_per_lead == null ? "—" : money(c.cost_per_lead)} · ${c.won} won</div>

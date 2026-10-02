@@ -188,15 +188,17 @@ def unsubscribe_url(settings: Settings, contact_id: str) -> str | None:
     return settings.public_base_url.rstrip("/") + "/u/" + token
 
 
-def compliance_footer(settings: Settings, unsubscribe_link: str | None) -> str:
-    """Sender identification and opt-out, appended by code to every message."""
+def compliance_footer(settings: Settings, unsubscribe_link: str | None, language: str = "en") -> str:
+    """Sender identification and opt-out, appended by code to every message (in the message's language)."""
+    from app.core.languages import t
+
     lines = []
     if settings.business_name:
         lines.append(settings.business_name)
     if settings.business_postal_address:
         lines.append(settings.business_postal_address)
-    opt_out = "To stop receiving these emails, reply with 'unsubscribe'"
-    opt_out += f" or use {unsubscribe_link}" if unsubscribe_link else ""
+    opt_out = t(language, "optout")
+    opt_out += t(language, "optout_link", link=unsubscribe_link) if unsubscribe_link else ""
     lines.append(opt_out + ".")
     return "\n\n--\n" + "\n".join(lines)
 

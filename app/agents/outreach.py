@@ -11,6 +11,8 @@ from datetime import timedelta
 from sqlalchemy import select
 
 from app.agents.base import BaseAgent
+from app.agents.translate import back_translate, final_text, flatten
+from app.core import languages
 from app.core.context import RunContext
 from app.core.ids import stable_key
 from app.core.interfaces import ActionRequest, AgentResult
@@ -83,6 +85,13 @@ class OutreachAgent(BaseAgent):
             + (f"Subject line style: {SUBJECT_STYLES[style]}. " if step == 0 and style in SUBJECT_STYLES else "")
             + "Include an opt-out line. Return {'subject','body','personalized'}."
         )
+        language = languages.language_for(ctx.session, company.country)
+        if language != languages.ENGLISH:
+            prompt += (
+                f" Write the subject and body in {languages.language_name(language)}, in the register a local "
+                "business would use with a procurement contact. Keep product and brand names and 'USD' in Latin "
+                "letters and write numbers with Western digits (0-9)."
+            )
         return self.ask(
             ctx,
             prompt,
@@ -96,6 +105,7 @@ class OutreachAgent(BaseAgent):
                 "sender_name": ctx.settings.email_sender_name or "NEXUS Sourcing",
                 "step": step,
                 "license_statement": license_statement(ctx, opportunity, company),
+                "language": language,
             },
         )
 
@@ -110,12 +120,13 @@ class OutreachAgent(BaseAgent):
         step: int,
         fact_check: dict,
         in_reply_to: str | None = None,
+        language: str = "en",
     ) -> Message:
         from app.execution.send import send_email
 
         return send_email(
             ctx, contact, subject, body, dedupe_key,
-            opportunity=opportunity, step=step, fact_check=fact_check, in_reply_to=in_reply_to,
+            opportunity=opportunity, step=step, fact_check=fact_check, in_reply_to=in_reply_to, language=language,
         )
 
     def run(self, ctx: RunContext, task_input: dict) -> AgentResult:
@@ -130,16 +141,20 @@ class OutreachAgent(BaseAgent):
         step = int(task_input.get("step", self.step))
         approved_review_id = task_input.get("approved_review_id")
         approved = ctx.session.get(ReviewItem, approved_review_id) if approved_review_id else None
+        language = languages.language_for(ctx.session, company.country)
+        english: dict = {}
         if approved is not None and (approved.action_payload or {}).get("body"):
-            # Send exactly the draft the operator read and approved.
-            copy = {
-                "subject": approved.action_payload.get("subject", ""),
-                "body": approved.action_payload["body"],
-                "personalized": True,
-            }
-            cost = 0.0
+            # Send exactly the draft the operator read and approved (or, if they edited the
+            # English version of a foreign-language draft, its translation).
+            language = approved.action_payload.get("language") or language
+            subject, body, cost = final_text(self, ctx, approved.action_payload)
+            copy = {"subject": subject, "body": body, "personalized": True}
         else:
             copy, cost = self._compose(ctx, opportunity, company, contact, step)
+            if language != languages.ENGLISH:
+                english, extra = back_translate(
+                    self, ctx, {"subject": copy.get("subject", ""), "body": copy.get("body", "")}, language)
+                cost += extra
         quantity = (opportunity.economics or {}).get("quantity")
         dedupe_key = stable_key(contact.id, opportunity.id, "outreach", step)
 
@@ -162,6 +177,10 @@ class OutreachAgent(BaseAgent):
                 ),
                 "regulatory_checked": bool(task_input.get("regulatory_checked", False)),
                 "step": step,
+                "language": language,
+                "english_check": flatten(english) or None,
+                "subject_english": english.get("subject"),
+                "body_english": english.get("body"),
             },
             estimated_cost_usd=SEND_COST_USD,
             cost_category="email",
@@ -194,7 +213,8 @@ class OutreachAgent(BaseAgent):
             copy["body"],
             dedupe_key,
             step,
-            {"validated": True},
+            {"validated": True, "language": language},
+            language=language,
         )
         if message.status != "sent":
             return self.fail(f"send failed: {message.error}", cost_usd=cost)

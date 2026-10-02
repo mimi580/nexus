@@ -543,6 +543,20 @@ NEXUS marks messages it has read as read in the mailbox. You can still read and 
 
 ---
 
+### Languages: Arabic, Turkish and Hebrew
+
+NEXUS writes in the language of the buyer's market: **Arabic** for Saudi Arabia, the UAE, Qatar, Kuwait, Bahrain, Oman, Jordan, Lebanon, Iraq, Yemen, Egypt and Palestine; **Turkish** for Turkey; **Hebrew** for Israel; English everywhere else. This applies to first e-mails and follow-ups, replies and quotations, landing pages and enquiry forms (Arabic and Hebrew pages are laid out right to left), enquiry acknowledgements, the unsubscribe line, Google keywords and ad text. Buyer research in those countries also searches in the local language.
+
+- **Change a country's language** in Settings → commercial settings → `languages`, for example `{"United Arab Emirates": "en"}` if your buyers there prefer English. Valid codes: `en`, `ar`, `tr`, `he`.
+- **You always work in English.** In Reviews, a draft in another language is shown with its English version underneath, and the buyer's message with an English translation. To change a draft, edit the English version; your edit is translated into the buyer's language when you approve.
+- **How the safety rules are kept in other languages.** Text is checked three ways before it can be sent or published: every figure against your catalogue (in any script), a list of banned claims in that language (medical claims, approvals, "authorised distributor", "best price" and so on), and an independent translation back into English that must pass the same checks as an English message. A message without a verified back-translation is refused (rule R-FACT-03).
+- **Landing pages** in Arabic, Turkish or Hebrew get an English twin automatically, and each links to the other.
+- **Ads** are written and checked in English first, then translated; a translation that fails the limits or the checks is dropped, and if too few survive the campaign runs in English instead. The English source of every ad is shown in Reviews and on the Ads tab.
+- **Replies** are answered in the language the buyer wrote in. Opt-out requests are recognised in all four languages.
+- **Limits.** Translation is done by the AI model and verified by a second pass, not by a native speaker: before relying on it for a new market, have someone who reads the language look over one page and a few e-mails. Kurdish (northern Iraq) and Persian are not included. Supplier RFQs stay in English.
+
+---
+
 ## 16. Budget and costs
 
 - The monthly budget is **USD 500** by default. Set `BUDGET_MONTHLY_LIMIT_USD` to change it (higher or lower); there is no built-in ceiling beyond what you set.
@@ -682,7 +696,7 @@ For ads shown in the EU (Romania, Bulgaria and other member states), the EU Digi
 
 - NEXUS reads spend and clicks, not the platforms' ad-review status. If an ad is disapproved it simply shows no impressions; the platform e-mails you the reason.
 - Budgets are converted at the rate you set; a stale rate misstates spend in USD.
-- Google keywords are English. Pages and ads are in English.
+- Languages are English, Arabic, Turkish and Hebrew (see "Languages" in section 15). Product names, conditions and warranty terms on pages are shown as written in your catalogue. The privacy notice is in English. Generated image cards for Arabic and Hebrew Meta ads carry English text, so upload real photos for those markets.
 - Meta's own lead forms and Instagram direct messages are not used; everything goes to your landing page.
 
 ---
@@ -785,7 +799,7 @@ All endpoints except `/health`, `/u/…` and the public site (`/p/…`, `/privac
 | POST | `/api/run` | Runs one pass plus due jobs |
 | POST | `/api/control` | `{paused, emergency_stop, paused_categories, paused_geographies}` |
 | GET | `/api/reviews?status=pending` | Review items (`pending`, `approved`, `rejected`, `resolved`, `all`) |
-| POST | `/api/reviews/{id}/decision` | `{decision: approve\|reject\|resolve, note, subject?, body?}` |
+| POST | `/api/reviews/{id}/decision` | `{decision: approve\|reject\|resolve, note, subject?, body?, body_english?}` |
 | GET | `/api/opportunities?stage=` | Opportunities with contact and economics |
 | POST | `/api/opportunities/{id}/outcome` | `{result: won\|lost, revenue_usd?, margin_usd?, note}` |
 | GET/POST | `/api/catalogue/offers` | List / add a supplier offer |
@@ -931,6 +945,7 @@ These codes appear in the review queue, the System tab and the audit log. **Bloc
 | R-FUP-03 | block | Supplier follow-up cap reached |
 | R-FACT-01 | block | Unsupported figure or claim in the message |
 | R-FACT-02 | block | Message not personalised |
+| R-FACT-03 | block | A message written in Arabic, Turkish or Hebrew has no verified English back-translation |
 | R-BUD-01 | block | Budget line or month exhausted |
 | R-ADS-00 | block | Ad launch while `ADS_ENABLED=false` (production) |
 | R-ADS-01 | block | Ad for a product line that is never advertised (pharmaceuticals) |

@@ -16,6 +16,8 @@ from typing import Any
 from sqlalchemy import select
 
 from app.agents.base import BaseAgent
+from app.agents.translate import back_translate, translate_fields
+from app.core import languages
 from app.commercial import catalogue
 from app.core.context import RunContext
 from app.core.interfaces import AgentResult
@@ -41,13 +43,14 @@ CATEGORY_BUYERS = {
 }
 
 
-def slug_for(category: str, country: str) -> str:
+def slug_for(category: str, country: str, language: str = "en") -> str:
     title = CATEGORY_TITLES.get(category, category).lower()
     text = f"{title} {canonical_country(country)}"
-    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:110]
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:110]
+    return slug if language == "en" else f"{slug}-{language}"
 
 
-def page_facts(ctx: RunContext, category: str, country: str) -> dict[str, Any]:
+def page_facts(ctx: RunContext, category: str, country: str, language: str = "en") -> dict[str, Any]:
     """Everything a page may state, gathered from records NEXUS holds."""
     today = ctx.now.date()
     country = canonical_country(country)
@@ -85,6 +88,7 @@ def page_facts(ctx: RunContext, category: str, country: str) -> dict[str, Any]:
     s = ctx.settings
     return {
         "category": category,
+        "language": language,
         "category_title": CATEGORY_TITLES.get(category, category),
         "buyers": CATEGORY_BUYERS.get(category, "organisations"),
         "country": country,
@@ -107,7 +111,7 @@ def allowed_numbers(facts: dict[str, Any]) -> list[str]:
 
 def content_text(content: dict[str, Any]) -> str:
     parts = [content.get("headline", ""), content.get("subheadline", ""), content.get("about", ""),
-             content.get("cta", "")]
+             content.get("cta", ""), content.get("licence_statement", "")]
     parts += content.get("benefits") or []
     for item in content.get("faq") or []:
         parts += [item.get("q", ""), item.get("a", "")]
@@ -119,14 +123,16 @@ def check_content(content: dict[str, Any], facts: dict[str, Any]) -> list[str]:
     from app.ads.compliance import claim_issues
 
     text = content_text(content)
+    language = facts.get("language") or "en"
     result = validate_message(content.get("headline", ""), text, {
+        "language": language,
         "numbers": allowed_numbers(facts),
         "license_verified": bool(facts.get("licence_statement")),
         "regulatory_verified": False,
         "relationship_verified": False,
     })
     issues = list(result.unsupported)
-    issues += claim_issues(text, facts["category"])
+    issues += claim_issues(text, facts["category"], language)
     if not content.get("headline"):
         issues.append("missing headline")
     return issues
@@ -152,7 +158,11 @@ def template_content(facts: dict[str, Any]) -> dict[str, Any]:
             {"q": "Can I ask about delivery?", "a": f"Yes. Tell us your location in {facts['country']} and we confirm delivery terms in the quotation."},
         ],
         "cta": "Request a quotation",
+        **({"licence_statement": facts["licence_statement"]} if facts.get("licence_statement") else {}),
     }
+
+
+CONTENT_KEYS = ("headline", "subheadline", "benefits", "about", "faq", "cta", "licence_statement")
 
 
 class LandingPageAgent(BaseAgent):
@@ -161,38 +171,62 @@ class LandingPageAgent(BaseAgent):
     tier = ModelTier.REASONING
     complexity = 0.6
 
+    def _verify(self, ctx: RunContext, content: dict[str, Any], facts: dict[str, Any]) -> tuple[list[str], float]:
+        """Checks on the text itself and, for other languages, on an independent English back-translation."""
+        issues = check_content(content, facts)
+        language = facts.get("language") or "en"
+        if issues or language == "en":
+            return issues, 0.0
+        english, cost = back_translate(self, ctx, {k: v for k, v in content.items() if v}, language)
+        if not english.get("headline"):
+            return ["the translation could not be verified in English"], cost
+        return check_content(english, {**facts, "language": "en"}), cost
+
     def run(self, ctx: RunContext, task_input: dict) -> AgentResult:
         category = task_input["product_category"]
         country = canonical_country(task_input["country"])
-        facts = page_facts(ctx, category, country)
-        data, cost = self.ask(
-            ctx,
-            (
-                "Write conversion-focused landing page copy for B2B buyers using ONLY these facts. Lead with "
-                "the buyer's need, be specific (models, grades, warranty, lead time) when facts give them, and "
-                "make requesting a quotation the single clear action. No superlatives, no guarantees, no claims "
-                "about certifications, approvals, stock levels or delivery times that are not in the facts. "
-                "Headline under 70 characters. Return {'headline','subheadline','benefits':[3-5 short lines],"
-                "'about','faq':[{'q','a'}],'cta'}."
-            ),
-            facts,
+        language = task_input.get("language") or languages.language_for(ctx.session, country)
+        if not languages.supported(language):
+            return self.fail(f"unsupported language {language!r}")
+        facts = page_facts(ctx, category, country, language)
+        prompt = (
+            "Write conversion-focused landing page copy for B2B buyers using ONLY these facts. Lead with "
+            "the buyer's need, be specific (models, grades, warranty, lead time) when facts give them, and "
+            "make requesting a quotation the single clear action. No superlatives, no guarantees, no claims "
+            "about certifications, approvals, stock levels or delivery times that are not in the facts. "
+            "Headline under 70 characters. Return {'headline','subheadline','benefits':[3-5 short lines],"
+            "'about','faq':[{'q','a'}],'cta'}."
         )
-        content = {k: data.get(k) for k in ("headline", "subheadline", "benefits", "about", "faq", "cta")}
-        issues = check_content(content, facts)
+        if language != "en":
+            prompt += (
+                f" Write everything in {languages.language_name(language)} as a local business would; write the "
+                f"country as '{languages.country_name(language, country)}'; keep product and brand names and 'USD' "
+                "in Latin letters and use Western digits (0-9). If the facts include a licence_statement, also "
+                "return 'licence_statement': a faithful translation of it, nothing added."
+            )
+        data, cost = self.ask(ctx, prompt, facts)
+        content = {k: data.get(k) for k in CONTENT_KEYS if data.get(k)}
+        issues, extra = self._verify(ctx, content, facts)
+        cost += extra
         used_template = False
         if issues:
             content, used_template = template_content(facts), True
-            issues_after = check_content(content, facts)
+            if language != "en":  # the plain English version, translated and verified the same way
+                content, extra = translate_fields(self, ctx, content, language)
+                cost += extra
+            issues_after, extra = self._verify(ctx, content, facts)
+            cost += extra
             if issues_after:
                 return self.fail(f"page could not be made compliant: {issues_after}", cost_usd=cost)
 
-        slug = slug_for(category, country)
+        slug = slug_for(category, country, language)
         page = ctx.session.scalar(select(LandingPage).where(LandingPage.slug == slug))
         if page is None:
             page = LandingPage(slug=slug, product_category=category, country=country, version=1)
             ctx.session.add(page)
         else:
             page.version += 1
+        page.language = language
         page.content = content
         page.facts = facts
         page.status = "published"
@@ -201,12 +235,19 @@ class LandingPageAgent(BaseAgent):
             "landing_page_published", summary=f"{slug} v{page.version}" + (" (template: AI copy failed checks)" if used_template else ""),
             decision="allow", task_id=ctx.task_id, issues=issues,
         )
-        return self.ok(output={"slug": slug, "version": page.version, "template": used_template, "rejected_copy_issues": issues},
-                       cost_usd=cost)
+        output = {"slug": slug, "version": page.version, "language": language, "template": used_template,
+                  "rejected_copy_issues": issues}
+        # Buyers who prefer English get an English version of the same page, linked from this one.
+        if language != "en" and ensure_page(ctx, category, country, "en") is None:
+            english = self.run(ctx, {"product_category": category, "country": country, "language": "en"})
+            cost += english.cost_usd
+            output["english_slug"] = english.output.get("slug") if english.ok else None
+        return self.ok(output=output, cost_usd=cost)
 
 
-def ensure_page(ctx: RunContext, category: str, country: str) -> LandingPage | None:
-    page = ctx.session.scalar(select(LandingPage).where(LandingPage.slug == slug_for(category, country)))
+def ensure_page(ctx: RunContext, category: str, country: str, language: str | None = None) -> LandingPage | None:
+    language = language or languages.language_for(ctx.session, country)
+    page = ctx.session.scalar(select(LandingPage).where(LandingPage.slug == slug_for(category, country, language)))
     return page if page is not None and page.status == "published" else None
 
 

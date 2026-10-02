@@ -35,6 +35,8 @@ CATEGORY_WORDS = {
     ProductCategory.SERVER_IT.value: "servers IT infrastructure",
 }
 
+from app.core import languages  # noqa: E402
+
 PROSPECT_QUERIES = {
     ProductCategory.LAPTOP.value: [
         "{country} tender supply of laptops",
@@ -220,6 +222,10 @@ def discover_prospects(agent: Any, ctx: Any, task_input: dict) -> AgentResult:
     for country in countries:
         queries = [t.format(country=country) for t in templates[:per_country]]
         queries += [f"site:{d} {words} {country}" for d in directories[:2]]
+        # Where buyers publish in Arabic, Turkish or Hebrew, search in that language too.
+        local = languages.language_for(ctx.session, country)
+        local_templates = languages.PROSPECT_QUERIES.get(local, {}).get(category, [])
+        queries += [t.format(country=languages.country_name(local, country)) for t in local_templates[:per_country]]
         for query in queries:
             for doc in ctx.research.search(query, country=country, count=8):
                 if doc.id not in doc_country:
@@ -237,6 +243,10 @@ def discover_prospects(agent: Any, ctx: Any, task_input: dict) -> AgentResult:
             if not place_templates or created >= limit:
                 break
             query = place_templates[week % len(place_templates)].format(country=country)
+            local = languages.language_for(ctx.session, country)
+            local_places = languages.PLACE_QUERIES.get(local, {}).get(category, [])
+            if local_places and week % 2:  # alternate weeks between English and local-language listings
+                query = local_places[(week // 2) % len(local_places)].format(country=languages.country_name(local, country))
             for place in ctx.research.places(query, country=country, count=10):
                 if created >= limit:
                     break

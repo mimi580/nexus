@@ -31,13 +31,14 @@ def send_email(
     in_reply_to: str | None = None,
     product_category: str | None = None,
     counterparty: str = "buyer",
+    language: str = "en",
 ) -> Message:
     fact_check = fact_check or {}
 
     settings = ctx.settings
     link = unsubscribe_url(settings, contact.id)
     if settings.business_name or settings.nexus_mode == "production":
-        body = body.rstrip() + compliance_footer(settings, link)
+        body = body.rstrip() + compliance_footer(settings, link, language)
     message_id = new_message_id(settings)
     thread = select(Message).where(
         Message.contact_id == contact.id, Message.direction == "outbound", Message.status == "sent",

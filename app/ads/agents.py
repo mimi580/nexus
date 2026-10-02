@@ -21,9 +21,11 @@ from typing import Any
 from sqlalchemy import select
 
 from app.ads import copy as adcopy
-from app.ads.compliance import ad_allowed
+from app.ads.compliance import ad_allowed, english_meaning_issues
 from app.ads.platforms import AdPlatformError, Launch, SimulatedAdsPlatform, platform_for
 from app.agents.base import BaseAgent
+from app.agents.translate import back_translate, flatten, translate_fields
+from app.core import languages
 from app.commercial import catalogue
 from app.commercial import settings as commercial
 from app.core.context import RunContext
@@ -33,7 +35,7 @@ from app.core.types import ActionKind, Decision, ModelTier
 from app.database.models import AdAsset, AdCampaign, AdMetric, AdVariant, LandingPage, Lead
 from app.learning import signals
 from app.learning.bandits import CountArm, RateArm, probability_best, thompson_allocation
-from app.site.pages import LandingPageAgent, ensure_page, page_url
+from app.site.pages import LandingPageAgent, allowed_numbers, ensure_page, page_url
 
 PLATFORMS = ("google", "meta")
 LIVE_STATUSES = ("proposed", "awaiting_approval", "active", "paused_budget")
@@ -127,6 +129,43 @@ def write_variant(agent: BaseAgent | None, ctx: RunContext, platform: str, facts
     return content, record
 
 
+def localise_variant(agent: BaseAgent, ctx: RunContext, platform: str, facts: dict[str, Any],
+                     content: dict[str, Any], language: str) -> tuple[dict[str, Any] | None, list[str], float]:
+    """A checked English ad in Arabic, Turkish or Hebrew: (content or None, why it was rejected, cost).
+
+    The translation must fit the platform limits, pass the claim rules in its
+    own language, carry only supported figures, and mean in English (by an
+    independent back-translation) nothing the English checks would refuse.
+    The English source is kept with the ad so you can read what it says.
+    """
+    fields = {k: content[k] for k in adcopy.TRANSLATED_FIELDS[platform] if content.get(k)}
+    translated, cost = translate_fields(agent, ctx, fields, language, adcopy.TRANSLATION_LIMITS[platform])
+    if set(translated) != set(fields) or any(type(translated[k]) is not type(fields[k]) for k in fields):
+        return None, ["translation incomplete"], cost
+    local = {**content, **translated, "english": fields}
+    if platform == "meta" and not languages.is_rtl(language):
+        # The generated image card can carry left-to-right scripts; Arabic and Hebrew cards stay
+        # in English (upload real photos for those markets).
+        local["card"] = {"headline": translated["headline"], "cta": languages.t(language, "card_cta"),
+                         "subline": str(translated["primary_text"]).split("\n")[0][:120]}
+    issues = adcopy.check_variant(platform, local, facts, language)
+    if not issues:
+        back, extra = back_translate(agent, ctx, translated, language)
+        cost += extra
+        text = flatten(back)
+        issues = (english_meaning_issues(text, facts["category"], facts, allowed_numbers(facts))
+                  if text else ["the translation could not be verified in English"])
+    return (None if issues else local), issues, cost
+
+
+def page_for(ctx: RunContext, category: str, country: str, language: str) -> tuple[LandingPage | None, float, str]:
+    page = ensure_page(ctx, category, country, language)
+    if page is not None:
+        return page, 0.0, ""
+    result = LandingPageAgent().run(ctx, {"product_category": category, "country": country, "language": language})
+    return ensure_page(ctx, category, country, language), result.cost_usd, result.error or ""
+
+
 # ------------------------------------------------------------------ plan
 class AdPlannerAgent(BaseAgent):
     name = "ad_planner"
@@ -204,14 +243,14 @@ class AdPlannerAgent(BaseAgent):
 
     def _plan_one(self, ctx: RunContext, platform: str, category: str, country: str, budget: float,
                   market_arm: CountArm) -> tuple[AdCampaign | None, float, str]:
-        page = ensure_page(ctx, category, country)
-        page_cost = 0.0
+        language = languages.language_for(ctx.session, country)
+        page, page_cost, error = page_for(ctx, category, country, language)
+        if page is None and language != "en":  # no verified page in the local language: advertise in English
+            language = "en"
+            page, extra, error = page_for(ctx, category, country, language)
+            page_cost += extra
         if page is None:
-            result = LandingPageAgent().run(ctx, {"product_category": category, "country": country})
-            page_cost = result.cost_usd
-            page = ensure_page(ctx, category, country)
-            if page is None:
-                return None, page_cost, f"landing page could not be published: {result.error}"
+            return None, page_cost, f"landing page could not be published: {error}"
         if not page_url(ctx.settings, page):
             return None, 0.0, "PUBLIC_SITE_URL is not set, so ads would have nowhere to send people"
         facts = page.facts
@@ -220,7 +259,7 @@ class AdPlannerAgent(BaseAgent):
             return None, 0.0, "not enough facts (price, lead time, warranty...) to write an honest ad"
         ranked, p_best = rank_angles(ctx, platform, category, angles, f"{country}{ctx.now.date()}")
         chosen = ranked[:VARIANTS_PER_PLATFORM[platform]]
-        keywords, negatives, rejected_kw = adcopy.keyword_plan(facts)
+        extra_keywords: list[str] = []
         ai, cost = {}, page_cost
         try:
             data, copy_cost = self.ask(ctx, (
@@ -237,7 +276,7 @@ class AdPlannerAgent(BaseAgent):
             cost += copy_cost
             ai = data.get("variants") if isinstance(data.get("variants"), dict) else {}
             if platform == "google" and isinstance(data.get("keywords"), list):
-                keywords, negatives, rejected_kw = adcopy.keyword_plan(facts, [str(k) for k in data["keywords"]])
+                extra_keywords = [str(k) for k in data["keywords"]]
         except Exception as exc:  # noqa: BLE001 - templates are the fallback for any model failure
             ctx.audit.record("ad_copy_model_failed", summary=str(exc)[:300], task_id=ctx.task_id)
 
@@ -247,18 +286,39 @@ class AdPlannerAgent(BaseAgent):
             records.append(record)
             if content is not None:
                 variants.append((angle, content))
-        if len(variants) < (1 if platform == "google" else 2):
+        minimum = 1 if platform == "google" else 2
+        if len(variants) < minimum:
             return None, cost, f"no ad copy passed the checks: {records}"
+        if language != "en":
+            localised = []
+            for angle, content in variants:
+                local, issues, extra = localise_variant(self, ctx, platform, facts, content, language)
+                cost += extra
+                records.append({"angle": angle, "language": language,
+                                **({"translation_rejected": issues[:10]} if issues else {"translated": True})})
+                if local is not None:
+                    localised.append((angle, local))
+            if len(localised) >= minimum:
+                variants = localised
+            else:  # the translations did not pass: run this market in English rather than not at all
+                language = "en"
+                page, extra, error = page_for(ctx, category, country, language)
+                cost += extra
+                if page is None:
+                    return None, cost, f"landing page could not be published: {error}"
+                facts = page.facts
+        keywords, negatives, rejected_kw = adcopy.keyword_plan(
+            facts, extra_keywords if language == "en" else None, language)
 
         name = f"{adcopy.NOUN.get(category, category)} - {country} - {platform}"
         campaign = AdCampaign(
-            platform=platform, name=name, product_category=category, countries=[country], language="en",
+            platform=platform, name=name, product_category=category, countries=[country], language=language,
             status="proposed", daily_budget_usd=budget, landing_page_id=page.id,
             targeting={"countries": [country], "keywords": keywords if platform == "google" else [],
                        "negative_keywords": negatives if platform == "google" else [],
                        "audience": "advantage+ (Meta finds the audience; B2B copy filters it)" if platform == "meta" else None},
             plan={"angles_ranked": ranked, "p_best": {k: round(v, 3) for k, v in p_best.items()},
-                  "copy": records, "rejected_keywords": rejected_kw[:20],
+                  "copy": records, "rejected_keywords": rejected_kw[:20], "language": language,
                   "market": {"leads_per_usd_mean": round(market_arm.mean, 4), "observed_leads": market_arm.events,
                              "observed_spend_usd": round(market_arm.exposure, 2)},
                   "budget_rule": "min(default daily budget, room left in the month's ads budget)",
@@ -306,14 +366,18 @@ def recheck(ctx: RunContext, campaign: AdCampaign) -> list[str]:
         return ["landing page is not published"]
     issues = []
     for v in ctx.session.scalars(select(AdVariant).where(AdVariant.campaign_id == campaign.id, AdVariant.status == "active")):
-        issues += [f"{v.key}: {i}" for i in adcopy.check_variant(campaign.platform, v.content, page.facts)]
+        issues += [f"{v.key}: {i}" for i in adcopy.check_variant(campaign.platform, v.content, page.facts,
+                                                                    campaign.language or "en")]
     return issues
 
 
 def ad_preview(ctx: RunContext, campaign: AdCampaign) -> str:
     lines = [f"{campaign.name}: {campaign.daily_budget_usd} USD/day, {', '.join(campaign.countries or [])}"]
+    if (campaign.language or "en") != "en":
+        lines.append(f"Ads run in {languages.language_name(campaign.language)}; shown here is the English they were "
+                     "translated from (the translation was checked back into English).")
     for v in ctx.session.scalars(select(AdVariant).where(AdVariant.campaign_id == campaign.id)):
-        c = v.content
+        c = {**v.content, **(v.content.get("english") or {})}
         if campaign.platform == "google":
             lines.append(f"[{v.angle}] " + " | ".join(c.get("headlines", [])[:5]) + " — " + (c.get("descriptions") or [""])[0])
         else:
@@ -564,6 +628,12 @@ class AdOptimizerAgent(BaseAgent):
         content, _record = write_variant(self, ctx, campaign.platform, page.facts, angle, None)
         if content is None:
             return None, 0.0
+        translation_cost = 0.0
+        if (campaign.language or "en") != "en":
+            content, _issues, translation_cost = localise_variant(self, ctx, campaign.platform, page.facts, content,
+                                                                  campaign.language)
+            if content is None:
+                return None, translation_cost
         version = 1 + sum(1 for v in variants if v.angle == angle)
         variant = AdVariant(campaign_id=campaign.id, key=f"{angle}-v{version}", angle=angle, content=content, status="active")
         ctx.session.add(variant)
@@ -579,7 +649,7 @@ class AdOptimizerAgent(BaseAgent):
             variant.status = "failed"
             variant.status_reason = str(exc)[:1000]
             return None, 0.0
-        return variant.key, 0.0
+        return variant.key, translation_cost
 
     @staticmethod
     def _negatives(ctx: RunContext, campaign: AdCampaign, platform) -> list[str]:
