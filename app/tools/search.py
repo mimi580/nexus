@@ -26,6 +26,9 @@ COUNTRY_CODES = {
     "Mozambique": "MZ", "Botswana": "BW", "Namibia": "NA", "Angola": "AO", "Romania": "RO",
     "Bulgaria": "BG", "Serbia": "RS", "Moldova": "MD", "North Macedonia": "MK", "Albania": "AL",
     "Bosnia and Herzegovina": "BA", "Montenegro": "ME", "Ukraine": "UA", "Georgia": "GE",
+    "Saudi Arabia": "SA", "United Arab Emirates": "AE", "Qatar": "QA", "Kuwait": "KW", "Bahrain": "BH",
+    "Oman": "OM", "Jordan": "JO", "Lebanon": "LB", "Iraq": "IQ", "Yemen": "YE", "Israel": "IL",
+    "Palestine": "PS", "Turkey": "TR",
 }
 
 

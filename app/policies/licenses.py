@@ -48,7 +48,26 @@ REGIONS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# The Middle East as NEXUS targets it. Iran and Syria are left out on purpose:
+# they are under comprehensive sanctions, banks and ad platforms will not serve
+# them, and trade there needs specific legal clearance. Name them explicitly
+# under a licence's coverage countries if you hold that clearance.
+REGIONS["GCC"] = ("Bahrain", "Kuwait", "Oman", "Qatar", "Saudi Arabia", "United Arab Emirates")
+REGIONS["MIDDLE_EAST"] = (
+    "Bahrain", "Egypt", "Iraq", "Israel", "Jordan", "Kuwait", "Lebanon", "Oman", "Palestine", "Qatar",
+    "Saudi Arabia", "Turkey", "United Arab Emirates", "Yemen",
+)
+
 COUNTRY_ALIASES = {
+    "uae": "United Arab Emirates",
+    "u.a.e.": "United Arab Emirates",
+    "emirates": "United Arab Emirates",
+    "ksa": "Saudi Arabia",
+    "kingdom of saudi arabia": "Saudi Arabia",
+    "turkiye": "Turkey",
+    "türkiye": "Turkey",
+    "state of palestine": "Palestine",
+    "palestinian territories": "Palestine",
     "drc": "Democratic Republic of the Congo",
     "dr congo": "Democratic Republic of the Congo",
     "congo-kinshasa": "Democratic Republic of the Congo",
@@ -145,7 +164,7 @@ def add_license(
     expiry = _parse_date(expires_on, "expires_on")
     if expiry is None:
         raise LicenseError("expires_on is required; licences without an expiry cannot be relied on")
-    region_names = sorted({r.strip().upper() for r in (regions or []) if r and r.strip()})
+    region_names = sorted({"_".join(r.upper().replace("-", " ").split()) for r in (regions or []) if r and r.strip()})
     unknown_regions = [r for r in region_names if r not in REGIONS]
     if unknown_regions:
         raise LicenseError(f"unknown regions {unknown_regions}; valid: {sorted(REGIONS)}")

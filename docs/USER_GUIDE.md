@@ -291,7 +291,7 @@ Do these once, in this order. Everything can also be done from the command line 
 
 ### 7.1 Register your licence (medical and pharmaceutical)
 
-**Licences** tab → *Register a licence*. Enter the details exactly as they appear on the licence: holder name, issuing country, issuing authority, licence number, types (for example `importer, distributor`), categories (`medical_equipment, pharmaceutical`), regional scope (for example `EAC, COMESA`), and the validity dates. Section 12 explains what the regional scope does and does not allow.
+**Licences** tab → *Register a licence*. Enter the details exactly as they appear on the licence: holder name, issuing country, issuing authority, licence number, types (for example `importer, distributor`), categories (`medical_equipment, pharmaceutical`), regional scope (any of `EAC`, `COMESA`, `GCC`, `Middle East`), and the validity dates. Register each licence or certification separately: for example your Kenyan licence with `EAC, COMESA`, and your Middle East certification with `Middle East`. Section 12 explains what the regional scope does and does not allow.
 
 ### 7.2 Set your commercial rules
 
@@ -448,7 +448,8 @@ Medical equipment and pharmaceuticals are "regulated categories". For them NEXUS
 **Your licence register decides where NEXUS may approach buyers:**
 
 - A buyer in your licence's **issuing country** (Kenya) is a domestic deal. Outreach goes out normally, and any commitment still comes to you.
-- A buyer elsewhere in your **declared regional scope** (EAC, COMESA) is a cross-border deal. Outreach is allowed. Any commitment is held with a reminder to confirm that the buyer holds import authorisation in their country and that the product is registered with that country's regulator (for example TMDA in Tanzania, NDA in Uganda, Rwanda FDA). **A Kenyan licence does not authorise import into another country**, and NEXUS will never claim otherwise.
+- **Middle East.** Medical equipment and pharmaceuticals also target Bahrain, Egypt, Iraq, Israel, Jordan, Kuwait, Lebanon, Oman, Palestine, Qatar, Saudi Arabia, Turkey, the United Arab Emirates and Yemen (scope `Middle East`; `GCC` is the six Gulf states). Iran and Syria are deliberately not included: they are under comprehensive sanctions, and banks, Google and Meta will not serve them. If you hold specific legal clearance, add them by name under a licence's coverage countries and to `target_markets`. Until a licence or certification covering the Middle East is registered, outreach there waits in Reviews (R-REG-04).
+- A buyer elsewhere in your **declared regional scope** (EAC, COMESA, GCC, Middle East) is a cross-border deal. Outreach is allowed. Any commitment is held with a reminder to confirm that the buyer holds import authorisation in their country and that the product is registered with that country's regulator (for example TMDA in Tanzania, NDA in Uganda, Rwanda FDA, SFDA in Saudi Arabia, MOHAP in the UAE). **A Kenyan licence does not authorise import into another country**, and NEXUS will never claim otherwise.
 - A buyer **outside** your scope (for example Ghana or Nigeria) is not contacted without your approval (R-REG-04), and a commitment there is blocked (R-REG-05).
 - An **expired** licence covers nothing. You get alerts 45 days before expiry and again at expiry.
 

@@ -409,3 +409,20 @@ def test_licence_cli(tmp_path, capsys, monkeypatch):
     finally:
         reset_engine()
         reset_settings_cache()
+
+
+def test_middle_east_scope_covers_the_region_but_not_sanctioned_countries(session):
+    from app.commercial import settings as commercial
+    from app.policies.licenses import REGIONS
+
+    on = date(2026, 10, 2)
+    assert not coverage(session, "Saudi Arabia", PHARMA, on).covered  # nothing registered for the region yet
+    _license(session, license_number="ME-CERT-001", regions=["Middle East"])
+    for country in ("Saudi Arabia", "UAE", "Qatar", "Jordan", "Turkiye", "Iraq"):
+        assert coverage(session, country, PHARMA, on).covered, country
+        assert coverage(session, country, MEDICAL, on).covered, country
+    assert not coverage(session, "Iran", PHARMA, on).covered
+    assert not coverage(session, "Syria", MEDICAL, on).covered
+    markets = commercial.get(session)["target_markets"]
+    assert set(REGIONS["MIDDLE_EAST"]) <= set(markets[MEDICAL]) and set(REGIONS["MIDDLE_EAST"]) <= set(markets[PHARMA])
+    assert "Saudi Arabia" not in markets["refurbished_laptop"]

@@ -14,9 +14,13 @@ from sqlalchemy.orm import Session
 
 from app.core.types import ProductCategory
 from app.database.models import SystemState
-from app.policies.licenses import canonical_country
+from app.policies.licenses import REGIONS, canonical_country
 
 KEY = "commercial"
+
+# Medical equipment and pharmaceuticals also target the whole Middle East
+# (the licence register still decides what may be sent without your review).
+MIDDLE_EAST = list(REGIONS["MIDDLE_EAST"])
 
 DEFAULTS: dict[str, Any] = {
     "min_margin_pct": {c.value: 12.0 for c in ProductCategory},
@@ -40,8 +44,8 @@ DEFAULTS: dict[str, Any] = {
     # Countries research may consider per category. Market scores are recomputed
     # from evidence every cycle; this list only bounds where NEXUS looks.
     "target_markets": {
-        ProductCategory.MEDICAL.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Zambia"],
-        ProductCategory.PHARMA.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Zambia"],
+        ProductCategory.MEDICAL.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Zambia", *MIDDLE_EAST],
+        ProductCategory.PHARMA.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Zambia", *MIDDLE_EAST],
         ProductCategory.LAPTOP.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Nigeria", "Ghana"],
         ProductCategory.SERVER_IT.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Nigeria", "Egypt"],
         ProductCategory.IPHONE.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Romania", "Bulgaria", "Serbia", "Moldova"],

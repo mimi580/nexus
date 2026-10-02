@@ -34,6 +34,9 @@ ISO_NUMERIC = {
     "Cameroon": 120, "Romania": 642, "Bulgaria": 100, "Serbia": 688, "Moldova": 498,
     "North Macedonia": 807, "Albania": 8, "Bosnia and Herzegovina": 70, "Montenegro": 499,
     "Georgia": 268, "Ukraine": 804,
+    "Saudi Arabia": 682, "United Arab Emirates": 784, "Qatar": 634, "Kuwait": 414, "Bahrain": 48,
+    "Oman": 512, "Jordan": 400, "Lebanon": 422, "Iraq": 368, "Yemen": 887, "Israel": 376,
+    "Palestine": 275, "Turkey": 792,
 }
 EU_COUNTRIES = {"Romania", "Bulgaria", "Greece", "Croatia", "Poland", "Hungary", "Slovakia", "Czechia",
                 "Slovenia", "Austria", "Germany", "France", "Italy", "Spain", "Portugal", "Netherlands",
