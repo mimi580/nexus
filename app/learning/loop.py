@@ -350,8 +350,9 @@ def snapshot(ctx: Any) -> dict[str, Any]:
         }
         from app.ads.compliance import ad_allowed
         from app.ads.copy import ANGLES
+        from app.core.config import get_settings
 
-        if ad_allowed(category):
+        if ad_allowed(category, get_settings().ads_pharma_enabled):
             out["ads"][category] = {p: describe(signals.ad_angle_arms(session, p, category, ANGLES)) for p in ("google", "meta")}
         out["suppliers"][category] = describe(supplier_region_arms(session, category, settings["supplier_regions"].get(category, [])))
     strategy = active_scoring(session)

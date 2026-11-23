@@ -92,7 +92,7 @@ These are enforced by code, not by instructions to the AI:
 | Contact someone who opted out, bounced or complained | Rules R-OUT-01 to R-OUT-04 |
 | E-mail the same person twice in a day, or exceed your daily limit | Rules R-RATE-01, R-RATE-02 |
 | Spend more than your monthly budget (USD 500 unless you change it) | Every paid action, and all ad spend, is booked against the budget; paid work and ads stop when it is used |
-| Advertise pharmaceuticals | Rule R-ADS-01 |
+| Advertise pharmaceuticals (unless you switch `ADS_PHARMA_ENABLED` on; then every campaign still waits for you) | Rules R-ADS-01, R-ADS-04 |
 | Launch an ad campaign without your approval (unless you switch that off) | Rule R-ADS-03 |
 | Loop forever or run up costs | Every run has iteration, time, cost, action and no-progress limits |
 
@@ -635,7 +635,7 @@ Only the public pages (`/p/…`, `/privacy`, `/site`) answer on that domain; the
 
 ## 18. Advertising on Google and Meta
 
-NEXUS plans, writes, launches, measures and improves ads on **Google Search** and **Meta** (Facebook and Instagram), for every product line **except pharmaceuticals**, which are never advertised (rule R-ADS-01).
+NEXUS plans, writes, launches, measures and improves ads on **Google Search** and **Meta** (Facebook and Instagram), for every product line. **Pharmaceuticals are off by default** (rule R-ADS-01) and can be switched on; see "Pharmaceutical ads" below.
 
 ### How NEXUS decides what to run
 
@@ -664,6 +664,17 @@ A failing ad is replaced by a plain version built from facts; if that fails too,
 By default (`ADS_REQUIRE_LAUNCH_APPROVAL=true`) each new campaign appears in **Reviews** as *ad campaign*, showing the budget, country, every ad's text and the keywords. **Approve and launch** builds it on the platform; **Reject** discards it for good. Campaigns are created paused and switched on only once every part exists, so a half-built campaign never spends.
 
 Set `ADS_REQUIRE_LAUNCH_APPROVAL=false` only once you trust what NEXUS proposes; spending stays inside the ads budget either way.
+
+### Pharmaceutical ads (opt-in)
+
+Set `ADS_PHARMA_ENABLED=true` to let NEXUS plan ads for the pharmaceutical line. They are deliberately narrower than the other lines:
+
+- **Generic only.** Ads and landing pages describe institutional supply to pharmacies, hospitals and distributors. They never name a drug, never show a price or "from" price, and never make a medical claim. Keywords are a fixed institutional list (the model cannot add its own), and terms such as prescription, dosage, online pharmacy and "buy online" are negatives.
+- **Refused wording.** Prescription or controlled-drug wording, named medicines such as tramadol or sildenafil, weight-loss and "cures" claims, and "FDA approved" are rejected by the ad checks.
+- **Always your approval.** Every pharmaceutical campaign waits in Reviews (rule R-ADS-04), even if you set `ADS_REQUIRE_LAUNCH_APPROVAL=false`.
+- **Licence still applies.** Quotes and orders for medicines still need a licence covering the country (R-REG rules). The ad only starts a conversation.
+- **Platform rules are the real risk.** Google and Meta restrict medicine ads by country and advertiser type (Meta, for example, requires certification for prescription-drug ads and limits them to a few countries), and a violation can suspend the whole ad account. Read each platform's healthcare policy for your target markets before approving the first campaign, and consider a **separate ad account** for this line so a problem cannot affect your laptop, phone or server campaigns.
+- Switching `ADS_PHARMA_ENABLED` back to `false` stops new pharmaceutical campaigns; existing ones still need pausing in the dashboard or on the platform.
 
 ### After launch (automatic)
 
@@ -935,6 +946,7 @@ All settings live in `.env` on the server. After changing it, run `docker compos
 | `LEAD_RESPONSE_PROMISE` | within one business day | Shown on pages and in acknowledgements; keep it realistic |
 | `ADS_ENABLED` | false | Master switch for advertising in production |
 | `ADS_REQUIRE_LAUNCH_APPROVAL` | true | New campaigns wait in Reviews |
+| `ADS_PHARMA_ENABLED` | false | Allow generic pharmaceutical ads (always need your approval) |
 | `ADS_DEFAULT_DAILY_BUDGET_USD` | 5 | Starting daily budget per campaign |
 | `ADS_MIN_DAILY_BUDGET_USD` | 1 | Budget moves never go below this |
 | `ADS_TARGET_COST_PER_LEAD_USD` | 15 | What an enquiry is worth; drives pausing, cuts and the market prior |
@@ -978,9 +990,10 @@ These codes appear in the review queue, the System tab and the audit log. **Bloc
 | R-FACT-03 | block | A message written in Arabic, Turkish, Hebrew, French or Portuguese has no verified English back-translation |
 | R-BUD-01 | block | Budget line or month exhausted |
 | R-ADS-00 | block | Ad launch while `ADS_ENABLED=false` (production) |
-| R-ADS-01 | block | Ad for a product line that is never advertised (pharmaceuticals) |
+| R-ADS-01 | block | Ad for pharmaceuticals while `ADS_PHARMA_ENABLED=false` |
 | R-ADS-02 | block | Ad copy failed the checks at launch time (facts changed since planning) |
 | R-ADS-03 | escalate | New ad campaign (while `ADS_REQUIRE_LAUNCH_APPROVAL=true`) |
+| R-ADS-04 | escalate | Any pharmaceutical campaign (always, whatever R-ADS-03 is set to) |
 
 ---
 

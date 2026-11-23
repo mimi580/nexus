@@ -138,7 +138,7 @@ def test_planner_builds_campaigns_with_pages_and_never_pharma(adctx):
     campaigns = list(adctx.session.scalars(select(AdCampaign)))
     assert campaigns and all(c.product_category == LAPTOP for c in campaigns)
     assert {c.platform for c in campaigns} == {"google", "meta"}
-    assert any("never advertised" in n for n in result.output["notes"])
+    assert any("not advertised" in n for n in result.output["notes"])
     page = adctx.session.scalar(select(LandingPage).where(LandingPage.product_category == LAPTOP))
     assert page is not None and page.status == "published"
     google = next(c for c in campaigns if c.platform == "google")

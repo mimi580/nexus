@@ -8,7 +8,7 @@
     convert   tell the platform which clicks became enquiries and sales, so its own
               bidding learns who your buyers are
 
-Pharmaceuticals are never advertised (R-ADS-01). Budget moves are bounded
+Pharmaceuticals are advertised only when ADS_PHARMA_ENABLED=true (R-ADS-01, R-ADS-04). Budget moves are bounded
 (±30% a day, never below the minimum) so one noisy day cannot swing spend.
 """
 
@@ -183,13 +183,13 @@ class AdPlannerAgent(BaseAgent):
         if not platforms:
             return self.ok(output={"skipped": "no ad platform configured"})
 
-        # Which product lines can be advertised at all: never pharma; must have live offers.
+        # Which product lines can be advertised at all: pharma only when enabled; must have live offers.
         lines, notes = {}, []
         for category, countries in markets.items():
             if only_cat and category != only_cat:
                 continue
-            if not ad_allowed(category):
-                notes.append(f"{category}: never advertised (R-ADS-01)")
+            if not ad_allowed(category, ctx.settings.ads_pharma_enabled):
+                notes.append(f"{category}: not advertised (R-ADS-01; pharmaceuticals need ADS_PHARMA_ENABLED=true)")
                 continue
             if not catalogue.current_offers(ctx.session, category, today):
                 notes.append(f"{category}: no live supplier offer, nothing to advertise yet")

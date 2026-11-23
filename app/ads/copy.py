@@ -32,7 +32,7 @@ _NOUNS = {
     C.SERVER_IT.value: {"new": "Servers", "used": "Refurbished Servers",
                         "mixed": "New & Refurbished Servers", "unknown": "Servers"},
 }
-STATIC_NOUNS = {C.MEDICAL.value: "Medical Equipment"}
+STATIC_NOUNS = {C.MEDICAL.value: "Medical Equipment", C.PHARMA.value: "Pharmaceutical Supply"}
 
 
 def noun_for(category: str, stock: str | None = None, default: str | None = None) -> str:
@@ -47,6 +47,7 @@ BUYER_SHORT = {
     C.IPHONE.value: "Phone Retailers",
     C.MEDICAL.value: "Hospitals and Clinics",
     C.SERVER_IT.value: "Banks, ISPs and Data Centres",
+    C.PHARMA.value: "Pharmacies and Hospitals",
 }
 
 KEYWORDS = {
@@ -68,6 +69,12 @@ KEYWORDS = {
         "ultrasound machine supplier", "ecg machine supplier", "laboratory analyser supplier",
         "refurbished medical equipment", "hospital equipment {country}", "medical equipment suppliers in {country}",
         "medical equipment distributor {country}",
+    ],
+    # Pharmaceuticals (only when ADS_PHARMA_ENABLED): institutional supply, never a drug name.
+    C.PHARMA.value: [
+        "pharmaceutical wholesale supplier", "pharmaceutical distributor", "medical supplies distributor",
+        "hospital supplies distributor", "pharmaceutical supplier {country}", "pharmaceutical distributor {country}",
+        "medical consumables supplier {country}", "institutional pharmaceutical supply",
     ],
     C.SERVER_IT.value: [
         "refurbished servers", "refurbished dell poweredge", "refurbished hpe proliant", "used servers supplier",
@@ -122,6 +129,8 @@ NEGATIVES = {
                      "charger", "ringtone", "wallpaper"],
     C.MEDICAL.value: ["symptoms", "treatment", "disease", "nurse jobs", "doctor", "home use", "insurance"],
     C.SERVER_IT.value: ["minecraft", "discord", "vpn", "web hosting", "cloud server", "vps", "free server"],
+    C.PHARMA.value: ["symptoms", "side effects", "dosage", "dose", "price list", "online pharmacy", "buy online",
+                     "cheap", "pills", "tablets for", "cure", "home delivery", "prescription"],
 }
 
 ANGLES = ("price_value", "lead_time", "quality_warranty", "local_support", "compliance_docs", "range")
@@ -139,6 +148,16 @@ def _title(text: str) -> str:
 def available_angles(facts: dict[str, Any]) -> list[str]:
     """Angles the facts can support."""
     products = facts.get("products") or []
+    if facts.get("category") == C.PHARMA.value:
+        # Generic institutional supply only: no prices, ranges or drug names.
+        generic = []
+        if any(p.get("lead_time_days") for p in products):
+            generic.append("lead_time")
+        if facts.get("whatsapp") or facts.get("response_promise"):
+            generic.append("local_support")
+        if facts.get("licence_statement"):
+            generic.append("compliance_docs")
+        return generic
     angles = []
     if facts.get("from_price_usd"):
         angles.append("price_value")
@@ -262,7 +281,14 @@ def keyword_plan(facts: dict[str, Any], extra: list[str] | None = None,
     else:
         base = [k.format(country=country) for k in keywords_for(cat, facts.get("stock"))]
         local_negatives = []
+    if cat == C.PHARMA.value:
+        extra = None  # model-suggested keywords could name drugs
     accepted, rejected = check_keywords(base + list(extra or []))
+    if cat == C.PHARMA.value:
+        from app.ads.compliance import PHARMA_RESTRICTED_TERMS
+
+        rejected += [k for k in accepted if any(t in k for t in PHARMA_RESTRICTED_TERMS)]
+        accepted = [k for k in accepted if not any(t in k for t in PHARMA_RESTRICTED_TERMS)]
     negatives = NEGATIVES_COMMON + NEGATIVES.get(cat, []) + local_negatives
     accepted = [k for k in accepted if not any(re.search(rf"\b{re.escape(n)}\b", k) for n in negatives)]
     return accepted[:40], negatives, rejected

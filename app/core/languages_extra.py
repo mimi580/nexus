@@ -190,7 +190,7 @@ PLACE_QUERIES = {
 }
 
 # Google search-ad keywords (phrase match). Neutral about condition: they work for new and used stock.
-# Pharmaceuticals are never advertised.
+# Pharmaceutical ads (opt-in) use the English keyword bank in every market.
 AD_KEYWORDS = {
     "fr": {
         "medical_equipment": [

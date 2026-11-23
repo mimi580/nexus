@@ -15,10 +15,21 @@ from typing import Any
 from app.core.types import ProductCategory
 from app.policies.fact_check import validate_message
 
-# Pharmaceuticals are never advertised: Google and Meta restrict prescription
-# drug ads to certified advertisers in a few countries, and a wrong ad is a
-# regulatory problem, not a marketing one.
+# Pharmaceuticals are not advertised unless the operator opts in (ADS_PHARMA_ENABLED): Google and Meta restrict
+# prescription drug ads to certified advertisers in a few countries, and a wrong ad is a regulatory problem,
+# not a marketing one.
 ADS_FORBIDDEN_CATEGORIES = {ProductCategory.PHARMA.value}
+
+# Pharmaceutical ads (only when ADS_PHARMA_ENABLED=true) stay at the level of institutional supply. Naming a
+# drug, or anything about prescription, controlled or lifestyle medicines, is what Google and Meta restrict
+# hardest, so these terms are refused in ad copy, keywords and the landing page text.
+PHARMA_RESTRICTED_TERMS = [
+    "prescription", "without a prescription", "no prescription", "controlled drug", "controlled substance",
+    "narcotic", "opioid", "tramadol", "codeine", "morphine", "fentanyl", "oxycodone", "diazepam", "alprazolam",
+    "xanax", "valium", "ketamine", "sildenafil", "viagra", "tadalafil", "cialis", "anabolic", "steroid",
+    "misoprostol", "mifepristone", "abortion", "weight loss", "slimming", "cannabis", "online pharmacy",
+    "buy online", "cures", "treats", "heals", "miracle",
+]
 
 BANNED_AD_PHRASES = [
     "guarantee", "guaranteed", "100%", "risk-free", "risk free", "best price", "lowest price",
@@ -37,6 +48,8 @@ CATEGORY_BANNED = {
     ProductCategory.SERVER_IT.value: ["brand new", "factory sealed", "manufacturer warranty"],
     ProductCategory.MEDICAL.value: ["fda approved", "fda-approved", "ce marked", "cures", "treats",
                                     "diagnoses", "clinically proven", "safe for all"],
+    ProductCategory.PHARMA.value: [*PHARMA_RESTRICTED_TERMS, "fda approved", "fda-approved", "who approved",
+                                   "clinically proven", "safe for all", "no side effects"],
 }
 
 GOOGLE_LIMITS = {"headline": 30, "description": 90, "headlines_min": 3, "headlines_max": 15,
@@ -45,8 +58,10 @@ META_LIMITS = {"primary_text": 500, "headline": 40, "description": 30}
 META_CTAS = {"GET_QUOTE", "CONTACT_US", "LEARN_MORE", "SHOP_NOW", "SEND_MESSAGE", "WHATSAPP_MESSAGE"}
 
 
-def ad_allowed(category: str) -> bool:
-    return category not in ADS_FORBIDDEN_CATEGORIES
+def ad_allowed(category: str, pharma_enabled: bool = False) -> bool:
+    """May this line be advertised? Pharmaceuticals only when the operator has switched them on."""
+    return category not in ADS_FORBIDDEN_CATEGORIES or (
+        category == ProductCategory.PHARMA.value and pharma_enabled)
 
 
 # Words that would misdescribe stock the catalogue says is NEW.
@@ -79,7 +94,8 @@ def claim_issues(text: str, category: str, language: str = "en", facts: dict[str
     if language != "en":  # the same rules in Arabic, Turkish, Hebrew, French and Portuguese
         from app.core.languages import claim_phrases, normalise
 
-        kinds = ("ad", "medical", "regulatory") if category == ProductCategory.MEDICAL.value else (
+        kinds = ("ad", "medical", "regulatory") if category in (
+            ProductCategory.MEDICAL.value, ProductCategory.PHARMA.value) else (
             ("ad",) if new_stock else ("ad", "new"))
         folded = normalise(text)
         issues += [f"banned_claim:{p}" for _kind, p in claim_phrases(language, kinds) if p in folded]

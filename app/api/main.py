@@ -887,8 +887,8 @@ async def upload_asset(request: Request, category: str, caption: str = "", actor
     from app.ads.creative import normalise_photo
     from app.database.models import AdAsset
 
-    if category not in {c.value for c in ProductCategory} or not ad_allowed(category):
-        raise HTTPException(status_code=422, detail="unknown product line, or one that is never advertised")
+    if category not in {c.value for c in ProductCategory} or not ad_allowed(category, get_settings().ads_pharma_enabled):
+        raise HTTPException(status_code=422, detail="unknown product line, or one that is not advertised")
     raw = await request.body()
     if len(raw) > 8_000_000:
         raise HTTPException(status_code=413, detail="image over 8 MB")

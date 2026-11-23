@@ -236,7 +236,7 @@ PLACE_QUERIES = {
 }
 
 # Google search-ad keywords (phrase match). Only medical equipment: it is the one
-# advertised line that targets these markets (pharmaceuticals are never advertised).
+# advertised line that targets these markets (pharmaceutical ads, when enabled, use the English bank).
 AD_KEYWORDS = {
     "ar": {"medical_equipment": [
         "مورد معدات طبية", "موردين اجهزة طبية", "شركة اجهزة طبية", "معدات مستشفيات", "اجهزة طبية بالجملة",

@@ -105,6 +105,13 @@ def page_facts(ctx: RunContext, category: str, country: str, language: str = "en
         if row is not None and row.warranty:
             product["warranty"] = row.warranty
     price = catalogue.price_reference(ctx.session, category, country, today)
+    if category == ProductCategory.PHARMA.value:
+        # Pages and ads for medicines never name a product or quote a "from" price: they describe institutional
+        # supply only (the buyer's enquiry and your approved quotation carry the specifics).
+        lead = min((p["lead_time_days"] for p in products if p.get("lead_time_days")), default=None)
+        products = [{"name": "Pharmaceutical supply for institutions", "condition": None, "warranty": None,
+                     "lead_time_days": lead, "moq": None}]
+        price = None
     licence = None
     if category in {c.value for c in REGULATED_CATEGORIES}:
         cover = coverage(ctx.session, country, category, today)

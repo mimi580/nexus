@@ -311,18 +311,27 @@ def rule_fact_validation(req: ActionRequest, ctx: PolicyContext) -> PolicyResult
 
 
 def rule_ads(req: ActionRequest, ctx: PolicyContext) -> PolicyResult | None:
-    """Advertising: never pharma, never with failing copy, and new campaigns wait for you by default."""
+    """Advertising: pharma only when enabled (and always approved), never failing copy, new campaigns wait by default."""
     if req.kind != ActionKind.LAUNCH_AD_CAMPAIGN:
         return None
     from app.ads.compliance import ad_allowed
 
     if ctx.settings.nexus_mode == "production" and not ctx.settings.ads_enabled:
         return _block("R-ADS-00", "ADS_ENABLED is false")
-    if not ad_allowed(req.payload.get("product_category") or ""):
-        return _block("R-ADS-01", "this product line is never advertised")
+    category = req.payload.get("product_category") or ""
+    if not ad_allowed(category, ctx.settings.ads_pharma_enabled):
+        return _block("R-ADS-01", "this product line is not advertised (pharmaceuticals need ADS_PHARMA_ENABLED=true)")
     issues = req.payload.get("compliance_issues") or []
     if issues:
         return _block("R-ADS-02", "ad copy failed the checks: " + "; ".join(issues[:5]))
+    if category == "pharmaceutical":  # approval is not optional for medicines, whatever the setting below says
+        return _escalate(
+            "R-ADS-04",
+            "pharmaceutical campaigns always wait for your approval. Google and Meta restrict medicine ads by "
+            "country and advertiser type; check their healthcare policies for this market first, and consider a "
+            "separate ad account so a policy problem cannot affect your other campaigns",
+            RiskLevel.HIGH,
+        )
     if ctx.settings.ads_require_launch_approval:
         return _escalate("R-ADS-03", "new ad campaigns wait for your approval (ADS_REQUIRE_LAUNCH_APPROVAL)", RiskLevel.MEDIUM)
     return None

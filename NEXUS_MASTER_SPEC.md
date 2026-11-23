@@ -130,7 +130,7 @@ Evaluation/Learning, Audit, Execution, Dashboard.
     enquiries become deals, are acknowledged immediately and quoted
     through the human-approved reply path.
 14. **Advertising:** Google Search and Meta campaigns for every product
-    line except pharmaceuticals (never advertised). Plan markets, angles,
+    line (pharmaceuticals only when ADS_PHARMA_ENABLED=true, generic copy, always approved by the operator). Plan markets, angles,
     keywords and budgets from observed results; check every ad for
     platform limits, fact support and prohibited claims; launch with
     operator approval by default; book spend against the ads budget and
