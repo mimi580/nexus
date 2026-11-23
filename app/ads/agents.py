@@ -25,9 +25,9 @@ from app.ads.compliance import ad_allowed, english_meaning_issues
 from app.ads.platforms import AdPlatformError, Launch, SimulatedAdsPlatform, platform_for
 from app.agents.base import BaseAgent
 from app.agents.translate import back_translate, flatten, translate_fields
-from app.core import languages
 from app.commercial import catalogue
 from app.commercial import settings as commercial
+from app.core import languages
 from app.core.context import RunContext
 from app.core.ids import stable_key
 from app.core.interfaces import ActionRequest, AgentResult

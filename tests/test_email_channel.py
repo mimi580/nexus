@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.agents.outreach import OutreachAgent
 from app.core.config import Settings
 from app.core.types import ProductCategory
-from app.database.models import Contact, FollowUp, Message, ReviewItem
+from app.database.models import FollowUp, Message, ReviewItem
 from app.execution import email as email_mod
 from app.execution.inbound import InboundMail, ingest, parse, strip_quoted
 from app.scheduler.jobs import process_inbound
@@ -64,7 +64,7 @@ def test_unsubscribe_tokens_cannot_be_forged():
 
 
 class FakeSMTP:
-    instances: list["FakeSMTP"] = []
+    instances: list[FakeSMTP] = []
     refuse = False
 
     def __init__(self, host, port, timeout=None, context=None):

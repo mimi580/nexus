@@ -55,6 +55,10 @@ def test_login_is_required_when_configured(make_client):
 
 def test_production_refuses_without_a_login(make_client):
     client = make_client(NEXUS_ENV="production")
+    # Production never creates tables at startup (the migrate service does); simulate a migrated database.
+    from app.database.session import create_all
+
+    create_all()
     assert client.get("/api/state").status_code == 503
     assert client.get("/health").json()["production_ready"] is False
 
@@ -98,10 +102,10 @@ def test_catalogue_settings_and_outcomes_over_http(make_client):
 
 def test_unsubscribe_link_confirms_then_suppresses(make_client):
     client = make_client(UNSUBSCRIBE_SECRET="s" * 32)
+    from app.core.context import build_context
     from app.database.models import Contact
     from app.database.session import session_scope
     from app.execution.email import unsubscribe_token
-    from app.core.context import build_context
 
     with session_scope() as session:
         ctx = build_context(session)
@@ -217,3 +221,50 @@ def test_simulate_never_touches_the_real_database(tmp_path, capsys, monkeypatch)
     finally:
         reset_engine()
         reset_settings_cache()
+
+
+def test_repeated_wrong_passwords_lock_the_client_out(make_client):
+    from app.api.throttle import login_throttle
+
+    login_throttle.reset()
+    client = make_client(DASHBOARD_USERNAME="francis", DASHBOARD_PASSWORD="correct horse")
+    for _ in range(8):
+        assert client.get("/api/state", headers=_auth(password="wrong")).status_code == 401
+    locked = client.get("/api/state", headers=_auth())  # even the right password is refused now
+    assert locked.status_code == 429 and int(locked.headers["Retry-After"]) > 0
+    login_throttle.reset()
+    assert client.get("/api/state", headers=_auth()).status_code == 200
+
+
+def test_credentialless_requests_and_good_logins_do_not_count_as_failures(make_client):
+    from app.api.throttle import login_throttle
+
+    login_throttle.reset()
+    client = make_client(DASHBOARD_USERNAME="francis", DASHBOARD_PASSWORD="correct horse")
+    for _ in range(20):
+        assert client.get("/api/state").status_code == 401
+    for _ in range(20):
+        assert client.get("/api/state", headers=_auth()).status_code == 200
+    login_throttle.reset()
+
+
+def test_throttle_window_expires_and_memory_is_bounded():
+    from app.api.throttle import LoginThrottle
+
+    t = LoginThrottle(max_failures=3, window_seconds=60)
+    for i in range(3):
+        t.record_failure("a", now=100 + i)
+    assert t.retry_after("a", now=110) > 0
+    assert t.retry_after("a", now=200) == 0
+    t.record_success("a")
+    assert t.retry_after("a", now=110) == 0
+
+
+def test_production_startup_does_not_create_tables(make_client):
+    """Schema in production comes only from Alembic, so a missing schema fails loudly, not silently."""
+    from sqlalchemy import inspect
+
+    from app.database.session import get_engine
+
+    make_client(NEXUS_ENV="production")
+    assert "objectives" not in inspect(get_engine()).get_table_names()

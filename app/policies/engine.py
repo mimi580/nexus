@@ -6,9 +6,9 @@ decides whether something is permitted; it only proposes.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Callable
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.budget.controller import BudgetController
 from app.core.config import Settings, get_settings
 from app.core.interfaces import ActionRequest, PolicyResult
-from app.core.types import ActionKind, Decision, REGULATED_CATEGORIES, RiskLevel, utcnow
+from app.core.types import REGULATED_CATEGORIES, ActionKind, Decision, RiskLevel, utcnow
 from app.database.models import Company, Contact, FollowUp, Message, SupplierRFQ, SystemState
 from app.policies.fact_check import validate_message
 from app.policies.licenses import coverage

@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.core.context import RunContext
 from app.core.ids import stable_key
-from app.core.types import OpportunityStage, TERMINAL_STAGES
+from app.core.types import TERMINAL_STAGES, OpportunityStage
 from app.database.models import FollowUp, Message, Objective, Opportunity
 
 

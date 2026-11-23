@@ -15,6 +15,11 @@ jobs:
           cache: pip
       - name: Install
         run: pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check .
+      - name: Type check (informational)
+        continue-on-error: true
+        run: mypy app
       - name: Test
         run: python -m pytest -q --junitxml=junit.xml
       - name: Report test results

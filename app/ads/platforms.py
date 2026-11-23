@@ -15,7 +15,7 @@ import json
 import random
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any, Protocol
 
 import httpx
@@ -280,7 +280,7 @@ class GoogleAdsPlatform:
             return False
         conversion: dict[str, Any] = {
             "gclid": gclid, "conversionAction": f"customers/{self.customer}/conversionActions/{action}",
-            "conversionDateTime": when.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S+00:00"),
+            "conversionDateTime": when.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S+00:00"),
             "orderId": event_id,
         }
         if value_usd:
@@ -442,7 +442,7 @@ class MetaAdsPlatform:
         if attribution.get("fbc"):
             user_data["fbc"] = attribution["fbc"]
         payload: dict[str, Any] = {"event_name": "Purchase" if event == "won" else "Lead",
-                                   "event_time": int(when.replace(tzinfo=when.tzinfo or timezone.utc).timestamp()),
+                                   "event_time": int(when.replace(tzinfo=when.tzinfo or UTC).timestamp()),
                                    "action_source": "website", "event_id": event_id, "user_data": user_data}
         if page_url:
             payload["event_source_url"] = page_url

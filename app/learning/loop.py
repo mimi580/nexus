@@ -30,7 +30,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.types import OpportunityStage
-from app.database.models import Company, Experiment, Interaction, Message, Opportunity, Strategy, SystemState
+from app.database.models import (
+    Company,
+    Experiment,
+    Interaction,
+    Message,
+    Opportunity,
+    Strategy,
+    SystemState,
+)
 from app.learning import signals
 from app.learning.bandits import RateArm, probability_best
 
@@ -171,8 +179,8 @@ def labelled_deals(session: Session, now: datetime, since: datetime | None = Non
 
 def auc(scores: list[float], labels: list[int]) -> float:
     """Probability a random engaged deal outranks a random non-engaged one (ties count half)."""
-    pos = [s for s, y in zip(scores, labels) if y == 1]
-    neg = [s for s, y in zip(scores, labels) if y == 0]
+    pos = [s for s, y in zip(scores, labels, strict=False) if y == 1]
+    neg = [s for s, y in zip(scores, labels, strict=False) if y == 0]
     if not pos or not neg:
         return 0.5
     wins = sum(1.0 if p > n else 0.5 if p == n else 0.0 for p in pos for n in neg)
@@ -185,8 +193,8 @@ def fit_logistic(xs: list[list[float]], ys: list[int], l2: float = 1.0, steps: i
     w, b = [0.0] * d, 0.0
     for _ in range(steps):
         gw, gb = [0.0] * d, 0.0
-        for x, y in zip(xs, ys):
-            z = b + sum(wi * xi for wi, xi in zip(w, x))
+        for x, y in zip(xs, ys, strict=False):
+            z = b + sum(wi * xi for wi, xi in zip(w, x, strict=False))
             p = 1 / (1 + math.exp(-max(-30.0, min(30.0, z))))
             err = p - y
             gb += err
@@ -207,7 +215,7 @@ def cross_validated_auc(xs: list[list[float]], ys: list[int], folds: int = 5, se
         train = [i for i in idx if i not in test]
         w, b = fit_logistic([xs[i] for i in train], [ys[i] for i in train])
         for i in test:
-            scores.append(b + sum(wj * xj for wj, xj in zip(w, xs[i])))
+            scores.append(b + sum(wj * xj for wj, xj in zip(w, xs[i], strict=False)))
             labels.append(ys[i])
     return auc(scores, labels)
 
@@ -220,7 +228,7 @@ def propose_weights(current: dict[str, float], coefficients: list[float], keys: 
     """
     scale = sum(abs(v) for v in current.values()) or 1.0
     total = sum(abs(c) for c in coefficients) or 1.0
-    target = {k: c / total * scale for k, c in zip(keys, coefficients)}
+    target = {k: c / total * scale for k, c in zip(keys, coefficients, strict=False)}
     new = {}
     for k in keys:
         step = max(-MAX_WEIGHT_STEP, min(MAX_WEIGHT_STEP, target[k] - current.get(k, 0.0)))
@@ -321,7 +329,7 @@ def rollback_scoring(ctx: Any, reason: str, actor: str = "nexus") -> Strategy | 
 def snapshot(ctx: Any) -> dict[str, Any]:
     """What NEXUS currently believes, for the dashboard's Learning tab."""
     from app.commercial import settings as commercial
-    from app.core.types import ProductCategory, REGULATED_CATEGORIES
+    from app.core.types import REGULATED_CATEGORIES, ProductCategory
 
     session: Session = ctx.session
     rng = signals.rng_for("snapshot", ctx.now.date())

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from sqlalchemy import select
+
 from app.agents.base import BaseAgent
+from app.commercial import settings as commercial
 from app.core.context import RunContext
 from app.core.interfaces import AgentResult
-from app.core.types import EvidenceKind, ModelTier, OpportunityStage, REGULATED_CATEGORIES
+from app.core.types import REGULATED_CATEGORIES, EvidenceKind, ModelTier, OpportunityStage
 from app.database.models import Company, Contact, MarketAssessment, Opportunity
-from app.commercial import settings as commercial
-from sqlalchemy import select
 
 SCORE_WEIGHTS = {
     "buyer_probability": 0.22,

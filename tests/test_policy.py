@@ -2,7 +2,7 @@ import pytest
 
 from app.core.interfaces import ActionRequest
 from app.core.types import ActionKind, Decision, ProductCategory
-from app.database.models import Contact, Message
+from app.database.models import Message
 from app.policies.fact_check import validate_message
 
 

@@ -18,7 +18,6 @@ from app.memory.store import MemoryStore, TaskStore
 from app.models.router import ModelRouter
 from app.policies.engine import PolicyEngine
 
-
 PREVIEW_FIELDS = (
     "to", "subject", "body", "country", "product_category", "step", "amount_usd", "contact_id", "company_id",
     "in_reply_to_message_id", "their_message", "pricing", "allowed_facts", "regulatory_checked",
@@ -89,8 +88,8 @@ def build_context(
     inbox: Any = None,
 ) -> RunContext:
     from app.execution.email import build_email_provider
-    from app.models.router import build_default_router
     from app.execution.inbound import build_inbox
+    from app.models.router import build_default_router
     from app.tools.research import build_research
 
     settings = settings or get_settings()

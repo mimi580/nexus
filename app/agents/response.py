@@ -12,9 +12,16 @@ from app.core.types import (
     ModelTier,
     OpportunityStage,
     ResponseCategory,
-    STOP_FOLLOWUP_CATEGORIES,
 )
-from app.database.models import Company, Contact, FollowUp, Interaction, Message, Opportunity, Outcome
+from app.database.models import (
+    Company,
+    Contact,
+    FollowUp,
+    Interaction,
+    Message,
+    Opportunity,
+    Outcome,
+)
 
 POSITIVE = {
     ResponseCategory.INTERESTED,

@@ -6,7 +6,7 @@ from app.agents.base import BaseAgent
 from app.core.context import RunContext
 from app.core.interfaces import AgentResult
 from app.core.types import EvidenceKind, ModelTier, OpportunityStage, utcnow
-from app.database.models import Company, Contact, Opportunity
+from app.database.models import Company, Opportunity
 
 
 class ProspectDiscoveryAgent(BaseAgent):

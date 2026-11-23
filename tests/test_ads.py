@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
-
 import pytest
 from sqlalchemy import func, select
 

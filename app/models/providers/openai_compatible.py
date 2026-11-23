@@ -15,7 +15,7 @@ from app.core.config import Settings
 from app.core.errors import ProviderError, ProviderUnavailable
 from app.core.interfaces import ModelRequest, ModelResponse
 from app.core.types import ModelTier
-from app.models.providers.base import BaseProvider, price, render_user_message
+from app.models.providers.base import BaseProvider, price, render_system, render_user_message
 
 
 class OpenAICompatibleProvider(BaseProvider):
@@ -35,9 +35,7 @@ class OpenAICompatibleProvider(BaseProvider):
 
     def complete(self, request: ModelRequest) -> ModelResponse:
         model = self.models[request.tier]
-        messages = []
-        if request.system:
-            messages.append({"role": "system", "content": request.system})
+        messages = [{"role": "system", "content": render_system(request)}]
         messages.append({"role": "user", "content": render_user_message(request)})
         payload: dict = {"model": model, "messages": messages, "max_tokens": request.max_output_tokens}
         if request.expects_json:

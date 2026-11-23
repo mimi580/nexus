@@ -322,7 +322,7 @@ def claim_phrases(code: str | None, kinds: tuple[str, ...]) -> list[tuple[str, s
 def opt_out_in(text: str) -> bool:
     """True when a reply contains an opt-out phrase in Arabic, Turkish or Hebrew."""
     folded = normalise(text)
-    for code, phrases in OPT_OUT_PHRASES.items():
+    for phrases in OPT_OUT_PHRASES.values():
         for phrase in phrases:
             p = normalise(phrase)
             if re.search(rf"(?<!\w){re.escape(p)}(?!\w)", folded):

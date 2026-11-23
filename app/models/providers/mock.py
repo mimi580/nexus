@@ -16,7 +16,6 @@ from typing import Any
 from app.core.errors import ProviderUnavailable
 from app.core.ids import stable_key
 from app.core.interfaces import ModelRequest, ModelResponse
-from app.core.types import ModelTier
 from app.models.providers.base import BaseProvider, estimate_tokens, price
 from app.simulation import fixtures
 

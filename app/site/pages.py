@@ -17,11 +17,11 @@ from sqlalchemy import select
 
 from app.agents.base import BaseAgent
 from app.agents.translate import back_translate, translate_fields
-from app.core import languages
 from app.commercial import catalogue
+from app.core import languages
 from app.core.context import RunContext
 from app.core.interfaces import AgentResult
-from app.core.types import ModelTier, ProductCategory, REGULATED_CATEGORIES
+from app.core.types import REGULATED_CATEGORIES, ModelTier, ProductCategory
 from app.database.models import LandingPage
 from app.policies.fact_check import NUMBER_RE, validate_message
 from app.policies.licenses import canonical_country, coverage

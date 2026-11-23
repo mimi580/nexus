@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 import pytest
 from sqlalchemy import select
 
@@ -14,14 +12,21 @@ from app.agents.suppliers import (
     SupplierProfileAgent,
     SupplierResearchAgent,
     SupplierRFQAgent,
-    handle_supplier_reply,
     score_supplier,
 )
 from app.commercial import catalogue
 from app.core.config import Settings
 from app.core.interfaces import ActionRequest
 from app.core.types import ActionKind, Decision, ProductCategory
-from app.database.models import Company, Contact, Message, ReviewItem, SupplierOffer, SupplierRFQ, Task
+from app.database.models import (
+    Company,
+    Contact,
+    Message,
+    ReviewItem,
+    SupplierOffer,
+    SupplierRFQ,
+    Task,
+)
 from app.review import queue
 from app.scheduler.jobs import supplier_followups
 from app.tools.fetch import StaticFetcher

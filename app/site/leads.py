@@ -22,7 +22,15 @@ from app.core.context import RunContext
 from app.core.ids import stable_key
 from app.core.interfaces import ActionRequest, AgentResult
 from app.core.types import ActionKind, Decision, ModelTier, OpportunityStage
-from app.database.models import AdCampaign, AdVariant, LandingPage, Lead, Message, Opportunity, PageEvent
+from app.database.models import (
+    AdCampaign,
+    AdVariant,
+    LandingPage,
+    Lead,
+    Message,
+    Opportunity,
+    PageEvent,
+)
 
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 MAX_ENQUIRIES_PER_VISITOR_HOUR = 5

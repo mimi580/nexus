@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Date,
     DateTime,
@@ -13,7 +14,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    JSON,
     LargeBinary,
     String,
     Text,
@@ -39,7 +39,7 @@ class Objective(Base, TimestampMixin):
     priority: Mapped[int] = mapped_column(Integer, default=50)
     constraints: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    tasks: Mapped[list["Task"]] = relationship(back_populates="objective")
+    tasks: Mapped[list[Task]] = relationship(back_populates="objective")
 
 
 class Task(Base, TimestampMixin):

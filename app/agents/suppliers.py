@@ -34,15 +34,24 @@ from app.core.context import RunContext
 from app.core.ids import stable_key
 from app.core.interfaces import ActionRequest, AgentResult
 from app.core.types import (
+    REGULATED_CATEGORIES,
     ActionKind,
     Decision,
     EvidenceKind,
     ModelTier,
     OpportunityStage,
     ProductCategory,
-    REGULATED_CATEGORIES,
 )
-from app.database.models import Company, Contact, Interaction, Message, Opportunity, ReviewItem, SupplierOffer, SupplierRFQ
+from app.database.models import (
+    Company,
+    Contact,
+    Interaction,
+    Message,
+    Opportunity,
+    ReviewItem,
+    SupplierOffer,
+    SupplierRFQ,
+)
 
 SUPPLIER_QUERIES = {
     ProductCategory.LAPTOP.value: [
@@ -642,7 +651,7 @@ def extract_quote(agent: BaseAgent, ctx: RunContext, message: Message, company: 
         if currency not in ISO_CURRENCIES:
             currency = "USD" if "usd" in text.lower() or "$" in text else "???"
 
-        def stated(key: str) -> int | None:
+        def stated(key: str, line: dict = line) -> int | None:
             value = line.get(key)
             return int(float(value)) if value is not None and _number_in(value, text) else None
 

@@ -4,9 +4,8 @@ Revision ID: 8d41c07e2a55
 Revises: 5c2e9a1f7b30
 Create Date: 2026-09-30 12:00:00
 """
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = '8d41c07e2a55'
 down_revision = '5c2e9a1f7b30'

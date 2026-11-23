@@ -8,7 +8,11 @@ import pytest
 from sqlalchemy import func, select
 
 from app.agents.market_research import MarketResearchAgent
-from app.agents.prospecting import CompanyIntelligenceAgent, DecisionMakerAgent, ProspectDiscoveryAgent
+from app.agents.prospecting import (
+    CompanyIntelligenceAgent,
+    DecisionMakerAgent,
+    ProspectDiscoveryAgent,
+)
 from app.core.config import Settings
 from app.core.context import build_context
 from app.core.interfaces import ModelRequest, ModelResponse
@@ -16,7 +20,14 @@ from app.core.types import OpportunityStage, ProductCategory
 from app.database.models import Company, Contact, CostEntry, MarketAssessment, SourceDocument
 from app.models.providers.base import BaseProvider
 from app.models.router import ModelRouter
-from app.tools.fetch import FetchRefused, PageFetcher, StaticFetcher, extract_emails, html_to_text, is_public_host
+from app.tools.fetch import (
+    FetchRefused,
+    PageFetcher,
+    StaticFetcher,
+    extract_emails,
+    html_to_text,
+    is_public_host,
+)
 from app.tools.research import ResearchService, appears
 from app.tools.search import SearchHit, StaticSearch
 
@@ -279,3 +290,66 @@ def test_grounding_matcher_ignores_case_and_punctuation():
     assert appears("Kisumu Specialist Hospital", "…bids from KISUMU  specialist-hospital, Kenya")
     assert not appears("Kisumu Referral", "Kisumu Specialist Hospital")
     assert not appears("ab", "about")  # too short to count as a match
+
+
+# ---------------------------------------------------------------- fetcher redirect safety
+
+
+def _fetcher_with(handler, monkeypatch):
+    import httpx
+
+    from app.tools import fetch as fetch_module
+
+    monkeypatch.setattr(fetch_module, "is_public_host", lambda host: host not in {"internal.test", "localhost"})
+    monkeypatch.setattr(fetch_module.socket, "getaddrinfo", lambda *a, **k: [(0, 0, 0, "", ("93.184.216.34", 0))])
+    return PageFetcher(Settings(_env_file=None), min_interval_seconds=0, transport=httpx.MockTransport(handler))
+
+
+def test_fetcher_never_requests_an_internal_host_via_redirect(monkeypatch):
+    import httpx
+
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        if request.url.host == "good.test":
+            return httpx.Response(302, headers={"location": "http://internal.test/secret"})
+        return httpx.Response(200, headers={"content-type": "text/html"}, text="<p>secret</p>")
+
+    fetcher = _fetcher_with(handler, monkeypatch)
+    with pytest.raises(FetchRefused):
+        fetcher.fetch("http://good.test/start")
+    assert not any("internal.test/secret" in u for u in requested)
+
+
+def test_fetcher_follows_safe_redirects_and_caps_loops(monkeypatch):
+    import httpx
+
+    def handler(request):
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        if request.url.path == "/loop":
+            return httpx.Response(302, headers={"location": "/loop"})
+        if request.url.path == "/old":
+            return httpx.Response(301, headers={"location": "/new"})
+        return httpx.Response(200, headers={"content-type": "text/html"}, text="<title>T</title><p>hello</p>")
+
+    fetcher = _fetcher_with(handler, monkeypatch)
+    page = fetcher.fetch("http://good.test/old")
+    assert page.final_url == "http://good.test/new" and "hello" in page.text
+    with pytest.raises(FetchRefused, match="too many redirects"):
+        fetcher.fetch("http://good.test/loop")
+
+
+def test_fetcher_rejects_non_http_redirect_targets(monkeypatch):
+    import httpx
+
+    def handler(request):
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(302, headers={"location": "file:///etc/passwd"})
+
+    with pytest.raises(FetchRefused):
+        _fetcher_with(handler, monkeypatch).fetch("http://good.test/x")
