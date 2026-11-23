@@ -198,7 +198,8 @@ def compliance_footer(settings: Settings, unsubscribe_link: str | None, language
     if settings.business_postal_address:
         lines.append(settings.business_postal_address)
     opt_out = t(language, "optout")
-    opt_out += t(language, "optout_link", link=unsubscribe_link) if unsubscribe_link else ""
+    if unsubscribe_link and settings.email_visible_unsubscribe_link:
+        opt_out += t(language, "optout_link", link=unsubscribe_link)
     lines.append(opt_out + ".")
     return "\n\n--\n" + "\n".join(lines)
 

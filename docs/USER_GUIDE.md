@@ -237,7 +237,8 @@ Good deliverability is the difference between replies and the spam folder. Do th
    - **DKIM** — a TXT record generated in your provider's admin panel. Enable signing after adding it.
    - **DMARC** — a TXT record at `_dmarc.leonardtrade.co`, starting with `v=DMARC1; p=none; rua=mailto:francis@leonardtrade.co`. Move to `p=quarantine` after a few clean weeks.
 4. **Create an app password** if your provider supports one (Google and Zoho do). Use it as `SMTP_PASSWORD` and `IMAP_PASSWORD`, not your main password.
-5. **Warm up the mailbox.** For the first two weeks send a few normal e-mails by hand and reply to some. Start NEXUS with `OUTREACH_DAILY_LIMIT=5`, then raise it gradually: 10, then 15, then 20 or more once replies are coming in and bounces stay under 3%.
+5. **Opt-out wording.** Every e-mail ends with your business name, postal address and one plain line ("If this isn't relevant to you, just reply 'stop' and I won't contact you again"); the one-click unsubscribe button that Gmail and Outlook show beside the sender stays in the invisible message header. Replies saying stop or unsubscribe are honoured automatically. Set `EMAIL_VISIBLE_UNSUBSCRIBE_LINK=true` to also print a clickable link in the footer. The opt-out itself is not optional: the laws in most of your markets require one, and mailbox providers punish senders without it.
+6. **Warm up the mailbox.** For the first two weeks send a few normal e-mails by hand and reply to some. Start NEXUS with `OUTREACH_DAILY_LIMIT=5`, then raise it gradually: 10, then 15, then 20 or more once replies are coming in and bounces stay under 3%.
 
 Provider settings:
 

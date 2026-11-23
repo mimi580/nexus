@@ -83,7 +83,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "ack_subject": "We have your enquiry",
         "ack": "Dear {name},\n\nThank you for your enquiry about {topic}{qty}. We have received it and will reply {promise} with a written quotation or any questions we have.\n\nIf it helps, reply to this e-mail with the exact specification, delivery location and timing.\n\nRegards,\n{sender}",
         "units": "units",
-        "optout": "To stop receiving these emails, reply with 'unsubscribe'", "optout_link": " or use {link}",
+        "optout": "If this isn't relevant to you, just reply 'stop' and I won't contact you again", "optout_link": " or use {link}",
     },
     "ar": {
         "wa_header": "راسلنا عبر واتساب", "wa_chat": "تحدث معنا عبر واتساب", "wa_continue": "المتابعة عبر واتساب",

@@ -48,10 +48,22 @@ def test_mime_headers_support_one_click_unsubscribe_and_threading():
     assert message["In-Reply-To"] == "<first@nexus-trade.example>"
 
 
-def test_footer_identifies_the_sender_and_offers_opt_out():
+def test_footer_identifies_the_sender_and_offers_a_plain_reply_opt_out():
     footer = email_mod.compliance_footer(_settings(), "https://nexus.example/u/t")
     assert "Leonard Trading Ltd" in footer and "P.O. Box 1234-00100" in footer
-    assert "unsubscribe" in footer and "https://nexus.example/u/t" in footer
+    assert "reply 'stop'" in footer
+    assert "unsubscribe" not in footer.lower() and "https://" not in footer  # no ad-style link in the body
+
+
+def test_visible_unsubscribe_link_is_available_as_an_option():
+    footer = email_mod.compliance_footer(_settings(email_visible_unsubscribe_link=True), "https://nexus.example/u/t")
+    assert "https://nexus.example/u/t" in footer
+
+
+def test_the_unsubscribe_header_is_kept_even_when_the_footer_has_no_link():
+    message = email_mod.build_mime(_settings(), to="buyer@example.org", subject="Hi", body="Hello",
+                                   unsubscribe_url="https://nexus.example/u/tok")
+    assert "https://nexus.example/u/tok" in message["List-Unsubscribe"]
 
 
 def test_unsubscribe_tokens_cannot_be_forged():
@@ -140,7 +152,9 @@ def test_sent_mail_carries_the_footer_and_a_hard_bounce_suppresses_the_contact(c
     OutreachAgent().run(ctx, {"opportunity_id": opportunity.id, "regulatory_checked": True})
     sent = fake_smtp.instances[-1].sent[0]
     body = sent.get_content()
-    assert "Leonard Trading Ltd" in body and "https://nexus.example/u/" in body
+    assert "Leonard Trading Ltd" in body and "reply 'stop'" in body
+    assert "https://nexus.example/u/" not in body  # the link lives in the List-Unsubscribe header, not the text
+    assert "https://nexus.example/u/" in sent["List-Unsubscribe"]
     stored = ctx.session.scalar(select(Message).where(Message.direction == "outbound"))
     assert stored.provider_message_id == sent["Message-ID"]
 

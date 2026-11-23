@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     email_sender_address: str | None = None
     email_sender_name: str | None = None
     email_reply_to: str | None = None
+    # The opt-out is always there: a plain "reply stop" line, and the invisible List-Unsubscribe header that mail
+    # apps show as a small button. Turn this on to also print a clickable unsubscribe link in the footer.
+    email_visible_unsubscribe_link: bool = False
     email_api_key: str | None = None
     smtp_host: str | None = None
     smtp_port: int = 587

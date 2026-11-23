@@ -22,8 +22,8 @@ def test_log_redaction_covers_common_shapes():
 def test_env_example_exists_and_is_not_a_real_env():
     example = (REPO / ".env.example").read_text()
     assert "ANTHROPIC_API_KEY=" in example
-    assert not (REPO / ".env").exists()
-    assert ".env" in (REPO / ".gitignore").read_text()
+    # A local .env is normal (and holds your keys); what matters is that git ignores it.
+    assert ".env" in (REPO / ".gitignore").read_text().splitlines()
 
 
 def test_no_credentials_are_committed_in_source():

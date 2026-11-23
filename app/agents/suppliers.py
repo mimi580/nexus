@@ -507,7 +507,7 @@ class SupplierRFQAgent(BaseAgent):
                 (
                     "Write a concise, professional request for quotation to this supplier using only these facts. "
                     "It is a request for prices, not an order. If follow_up_number > 0, write a short polite "
-                    "follow-up to the earlier request. Include an opt-out line. Return {'subject','body'}."
+                    "follow-up to the earlier request. Do not write an unsubscribe or opt-out line (it is added automatically). Return {'subject','body'}."
                 ),
                 facts,
             )

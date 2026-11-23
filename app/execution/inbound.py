@@ -23,7 +23,8 @@ from app.core.ids import stable_key
 from app.core.languages import opt_out_in  # noqa: E402
 from app.database.models import Contact, FollowUp, Message, Opportunity
 
-OPT_OUT_RE = re.compile(r"\b(unsubscribe|remove me|opt[ -]?out|stop (?:emailing|contacting|sending))\b", re.I)
+OPT_OUT_RE = re.compile(
+    r"\b(unsubscribe|remove me|opt[ -]?out|stop (?:emailing|contacting|sending))\b|^\W*stop\W*$", re.I | re.M)
 BOUNCE_SENDERS = ("mailer-daemon", "postmaster", "mail delivery")
 BOUNCE_SUBJECTS = ("undeliver", "delivery status notification", "returned mail", "delivery failure", "failure notice", "mail delivery failed")
 AUTO_REPLY_SUBJECTS = ("out of office", "automatic reply", "auto-reply", "autoreply", "away from", "on leave")

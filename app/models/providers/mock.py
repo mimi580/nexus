@@ -190,7 +190,7 @@ class MockProvider(BaseProvider):
             f"{license_line}We source {category} and can work to your specification. Our focus is {angle}. "
             f"{qty_line} Condition grading, warranty terms and lead times are confirmed in writing before any order.\n\n"
             f"If this is useful, reply and I will send a quotation against your requirement. "
-            f"If it is not, reply with 'unsubscribe' and I will remove you from this list.\n\n"
+            f"If it is not, just say so and I will not write again.\n\n"
             f"Regards,\n{sender}"
         )
         return {"subject": subject, "body": body, "personalized": True}
@@ -260,7 +260,7 @@ class MockProvider(BaseProvider):
         if docs:
             lines.append("Please confirm you can provide: " + ", ".join(docs) + ".")
         lines += ["This is a request for prices, not an order.", "",
-                  "If you would rather not receive requests from us, reply 'unsubscribe'.", "",
+                  "If you would rather not receive requests from us, just say so and we will stop.", "",
                   f"Regards,\n{ctx.get('sender_name')}"]
         return {"subject": "Request for quotation", "body": "\n".join(lines)}
 

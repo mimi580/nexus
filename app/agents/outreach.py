@@ -87,7 +87,7 @@ class OutreachAgent(BaseAgent):
             "Write a short, accurate, personalised business email. Assert only facts supplied in context. "
             "Lead with the message angle. "
             + (f"Subject line style: {SUBJECT_STYLES[style]}. " if step == 0 and style in SUBJECT_STYLES else "")
-            + "Include an opt-out line. Return {'subject','body','personalized'}."
+            + "Do not write an unsubscribe or opt-out line: the sender details and a short reply-stop line are added automatically. Return {'subject','body','personalized'}."
         )
         language = languages.language_for(ctx.session, company.country)
         if language != languages.ENGLISH:
