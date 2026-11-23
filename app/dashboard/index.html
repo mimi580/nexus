@@ -250,7 +250,10 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const money = (n) => { if (n == null) return "—"; const v = Number(n); return "$" + v.toLocaleString(undefined, { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }); };
 const pct = (n) => ((n || 0) * 100).toFixed(1) + "%";
 const range = (r, f = money) => Array.isArray(r) ? (r[0] === r[1] ? f(r[0]) : `${f(r[0])} – ${f(r[1])}`) : "—";
-const words = (s) => esc(String(s || "").replace(/_/g, " "));
+// Category codes are stable identifiers; the names shown cover new and used/refurbished stock alike.
+const CAT_LABEL = { refurbished_laptop: "Laptops (new / refurbished)", used_iphone: "iPhones (new / used)",
+  medical_equipment: "Medical equipment", pharmaceutical: "Pharmaceuticals", server_it: "Servers / IT" };
+const words = (s) => esc(CAT_LABEL[s] || String(s || "").replace(/_/g, " "));
 const csvList = (v) => v.split(",").map((s) => s.trim()).filter(Boolean);
 let state = null;
 let activeTab = location.hash.replace("#", "") || "overview";
@@ -352,7 +355,7 @@ async function loadReviews() {
     const isSend = ["outreach_approval", "reply_approval", "supplier_rfq_approval"].includes(i.kind);
     const isAd = i.kind === "ad_campaign";
     const foreign = a.language && a.language !== "en";
-    const langName = { ar: "Arabic", tr: "Turkish", he: "Hebrew" }[a.language] || a.language;
+    const langName = { ar: "Arabic", tr: "Turkish", he: "Hebrew", fr: "French", pt: "Portuguese" }[a.language] || a.language;
     const p = a.pricing;
     const decided = i.status !== "pending";
     return `<div class="card" data-id="${esc(i.id)}">
@@ -522,7 +525,7 @@ function adVariant(c, v) {
 async function loadAds() {
   const [camps, assets] = await Promise.all([api("/api/ads/campaigns"), api("/api/ads/assets")]);
   el("ad-list").innerHTML = camps.length ? camps.map((c) => `<section class="card" data-id="${esc(c.id)}" style="margin-bottom:14px">
-    <div class="kind">${esc(c.platform)} · ${esc(({ ar: "Arabic", tr: "Turkish", he: "Hebrew", en: "English" })[c.language] || c.language || "English")} · ${words(c.status)}${c.status_reason ? " · " + esc(c.status_reason) : ""}</div>
+    <div class="kind">${esc(c.platform)} · ${esc(({ ar: "Arabic", tr: "Turkish", he: "Hebrew", fr: "French", pt: "Portuguese", en: "English" })[c.language] || c.language || "English")} · ${words(c.status)}${c.status_reason ? " · " + esc(c.status_reason) : ""}</div>
     <h3>${esc(c.name)}</h3>
     <div class="small">Budget <b>${money(c.daily_budget_usd)}/day</b> · spent ${money(c.spend_usd)} · ${c.impressions} impressions · ${c.clicks} clicks (CTR ${c.ctr == null ? "—" : pct(c.ctr)}) ·
       <b>${c.leads} enquiries</b> (${c.lead_rate == null ? "—" : pct(c.lead_rate)} of clicks) · cost per enquiry ${c.cost_per_lead == null ? "—" : money(c.cost_per_lead)} · ${c.won} won</div>

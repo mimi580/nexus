@@ -36,7 +36,7 @@ This guide is for the person running NEXUS: setting it up, putting it on a serve
 
 ## 1. What NEXUS does
 
-NEXUS is an autonomous B2B sales and sourcing assistant for five product lines: refurbished laptops, used/refurbished iPhones, medical equipment, pharmaceutical products and servers/IT equipment. It:
+NEXUS is an autonomous B2B sales and sourcing assistant for five product lines: laptops, iPhones, servers/IT equipment, medical equipment and pharmaceutical products, each in new or used/refurbished condition. It:
 
 - researches which countries are worth pursuing for each product line,
 - finds organisations that could buy (from web search results and their own websites),
@@ -49,6 +49,35 @@ NEXUS is an autonomous B2B sales and sourcing assistant for five product lines: 
 - publishes landing pages and runs Google and Meta ads for every line except pharmaceuticals, turning enquiries into deals,
 - learns from real outcomes (replies, enquiries, quotes and the deals you record) and changes what it does accordingly, and
 - tells you, by Telegram or e-mail, whenever it needs a decision.
+
+### What NEXUS covers
+
+**Product lines (new, used and refurbished stock).** Each line sells whatever condition your supplier offers say it is: `new`, `new surplus`, `Grade A refurbished`, `used` and so on. Pages, ads and keywords describe the stock exactly as the catalogue does: "brand new" only when every offer for the line is stated as new (and "factory sealed" only when stated sealed), never "refurbished" on new stock, and no "new" wording at all when the line is mixed or the condition is not stated.
+
+| Field | Product line (code) | Typical buyers |
+|---|---|---|
+| IT and electronics | Laptops, e.g. Dell Latitude, HP EliteBook/ProBook, Lenovo ThinkPad (`refurbished_laptop`) | schools, universities, NGOs, businesses, resellers |
+| IT and electronics | iPhones (`used_iphone`) | phone retailers, wholesalers, corporate buyers |
+| IT and electronics | Servers, storage and networking (`server_it`) | banks, data centres, ISPs, enterprises |
+| Healthcare | Medical equipment: monitors, ultrasound, ECG, laboratory analysers (`medical_equipment`) | hospitals, clinics, diagnostic centres |
+| Healthcare | Pharmaceutical products and consumables (`pharmaceutical`) | licensed pharmacies, distributors, hospitals |
+
+The category codes are stable identifiers kept from version 0.1 (so `refurbished_laptop` also means new laptops); the dashboard shows neutral names.
+
+**Regions (default `target_markets`, editable in Settings).**
+
+| Part of the world | Countries | Language |
+|---|---|---|
+| East Africa | Kenya, Uganda, Tanzania, Rwanda, Ethiopia | English |
+| Southern Africa | Zambia, South Africa, Zimbabwe, Malawi, Mozambique, Botswana, Namibia, Angola | English; Portuguese for Angola and Mozambique |
+| Central Africa | Democratic Republic of the Congo, Republic of the Congo, Cameroon, Gabon | French (Cameroon is bilingual; set it to `en` if you prefer) |
+| West and North Africa | Nigeria and Ghana (laptops), Nigeria and Egypt (servers) | English; Arabic for Egypt |
+| Middle East and Turkey | Bahrain, Egypt, Iraq, Israel, Jordan, Kuwait, Lebanon, Oman, Palestine, Qatar, Saudi Arabia, Turkey, UAE, Yemen (medical equipment and pharmaceuticals) | Arabic, Turkish, Hebrew |
+| South-East Europe | Romania, Bulgaria, Serbia, Moldova (iPhones) | English |
+
+If you saved any commercial settings before this update, your saved copy keeps the old markets and languages; run `nexus settings reset target_markets languages supplier_regions rfq_products` once to pick up the new defaults (your margins, duties and other settings are untouched). Other countries can be added at any time, for example `nexus settings set target_markets '{"server_it": ["Eswatini", "Lesotho", "Chad"]}'`. A name NEXUS does not recognise is rejected when you save it, so a typo cannot reach an ad campaign. Duty rates for the new countries are not pre-filled: until you enter them (`duties_taxes_pct`) every deal there is flagged "duties unknown". More markets spread the same budget over more places; start with the few you can actually serve and let the learning loop shift effort (section 19).
+
+**Where supplies come from** (supplier research regions): UAE, United States, United Kingdom, Germany, Netherlands, Hong Kong, China, India, Kenya, Egypt and South Africa, depending on the line.
 
 ### What it will never do
 
@@ -407,7 +436,7 @@ One row per offer, from a real quote, price list or supplier e-mail.
 | supplier_country | | UAE | |
 | product_category | yes | refurbished_laptop | One of the five category codes |
 | product_name | yes | Dell Latitude 5420 i5/16GB/256GB | Specific, as quoted |
-| condition | | grade A refurbished | |
+| condition | | New / grade A refurbished | Say plainly whether the stock is new or used/refurbished. This text decides how pages and ads may describe the line; blank is treated as "not stated" and never as new |
 | quantity_available | | 200 | Blank = unknown (treated as available) |
 | moq | | 20 | Minimum order quantity |
 | unit_cost_low_usd | yes | 195 | Convert to USD at today's rate |
@@ -449,7 +478,8 @@ Medical equipment and pharmaceuticals are "regulated categories". For them NEXUS
 
 - A buyer in your licence's **issuing country** (Kenya) is a domestic deal. Outreach goes out normally, and any commitment still comes to you.
 - **Middle East.** Medical equipment and pharmaceuticals also target Bahrain, Egypt, Iraq, Israel, Jordan, Kuwait, Lebanon, Oman, Palestine, Qatar, Saudi Arabia, Turkey, the United Arab Emirates and Yemen (scope `Middle East`; `GCC` is the six Gulf states). Iran and Syria are deliberately not included: they are under comprehensive sanctions, and banks, Google and Meta will not serve them. If you hold specific legal clearance, add them by name under a licence's coverage countries and to `target_markets`. Until a licence or certification covering the Middle East is registered, outreach there waits in Reviews (R-REG-04).
-- A buyer elsewhere in your **declared regional scope** (EAC, COMESA, GCC, Middle East) is a cross-border deal. Outreach is allowed. Any commitment is held with a reminder to confirm that the buyer holds import authorisation in their country and that the product is registered with that country's regulator (for example TMDA in Tanzania, NDA in Uganda, Rwanda FDA, SFDA in Saudi Arabia, MOHAP in the UAE). **A Kenyan licence does not authorise import into another country**, and NEXUS will never claim otherwise.
+- A buyer elsewhere in your **declared regional scope** (EAC, COMESA, SADC, ECCAS, CEMAC, GCC, Middle East) is a cross-border deal. Outreach is allowed. Any commitment is held with a reminder to confirm that the buyer holds import authorisation in their country and that the product is registered with that country's regulator (for example TMDA in Tanzania, NDA in Uganda, Rwanda FDA, SFDA in Saudi Arabia, MOHAP in the UAE). **A Kenyan licence does not authorise import into another country**, and NEXUS will never claim otherwise.
+- **Southern and Central Africa.** Scopes `SADC` (16 states, including South Africa, Zambia, Zimbabwe, Malawi, Mozambique, Botswana, Namibia, Angola, DRC), `ECCAS` (11 states, including Cameroon, Gabon, Chad, Angola, DRC) and `CEMAC` (the six states of the Central African franc zone: Cameroon, Central African Republic, Chad, Republic of the Congo, Equatorial Guinea, Gabon) can be registered on a licence. Regulators differ sharply, so a licence in one country never authorises another (South Africa's medicines regulator, for example, is SAHPRA, and every country decides its own import and product-registration rules). Identify each destination country's regulator and confirm its requirements with a local clearing agent before any commitment.
 - A buyer **outside** your scope (for example Ghana or Nigeria) is not contacted without your approval (R-REG-04), and a commitment there is blocked (R-REG-05).
 - An **expired** licence covers nothing. You get alerts 45 days before expiry and again at expiry.
 
@@ -474,7 +504,7 @@ Edited on the Settings tab or with `nexus settings set KEY 'JSON'`.
 | `duties_taxes_pct` | empty | Country → fraction, e.g. `{"Kenya": 0.16, "Uganda": 0.18}`. Empty means unknown |
 | `transaction_cost_pct` | 0.03 | Bank, FX and payment costs as a fraction of revenue |
 | `required_documents` | see section 12 | Category → list of document names |
-| `target_markets` | East African countries per category; iPhones also Romania, Bulgaria, Serbia, Moldova | Category → countries research may consider |
+| `target_markets` | East, Southern and Central African countries for every line (see "What NEXUS covers"); the Middle East for medical and pharma; Nigeria, Ghana, Egypt for IT lines; iPhones also Romania, Bulgaria, Serbia, Moldova | Category → countries research may consider |
 | `directories` | buyer: UNGM, tenders.go.ke; supplier: per-category B2B directories | Sites searched with `site:` queries in addition to the open web |
 | `supplier_regions` | e.g. laptops: UAE, US, UK, Germany, China, Kenya; pharma: India, China, Kenya, Egypt | Where supplier research looks |
 | `rfq_products` | A description per category | What RFQs ask suppliers to quote for |
@@ -543,17 +573,17 @@ NEXUS marks messages it has read as read in the mailbox. You can still read and 
 
 ---
 
-### Languages: Arabic, Turkish and Hebrew
+### Languages: Arabic, Turkish, Hebrew, French and Portuguese
 
-NEXUS writes in the language of the buyer's market: **Arabic** for Saudi Arabia, the UAE, Qatar, Kuwait, Bahrain, Oman, Jordan, Lebanon, Iraq, Yemen, Egypt and Palestine; **Turkish** for Turkey; **Hebrew** for Israel; English everywhere else. This applies to first e-mails and follow-ups, replies and quotations, landing pages and enquiry forms (Arabic and Hebrew pages are laid out right to left), enquiry acknowledgements, the unsubscribe line, Google keywords and ad text. Buyer research in those countries also searches in the local language.
+NEXUS writes in the language of the buyer's market: **Arabic** for Saudi Arabia, the UAE, Qatar, Kuwait, Bahrain, Oman, Jordan, Lebanon, Iraq, Yemen, Egypt and Palestine; **Turkish** for Turkey; **Hebrew** for Israel; **French** for the Democratic Republic of the Congo, the Republic of the Congo, Gabon, Cameroon, Chad and the Central African Republic; **Portuguese** for Angola and Mozambique; English everywhere else. This applies to first e-mails and follow-ups, replies and quotations, landing pages and enquiry forms (Arabic and Hebrew pages are laid out right to left), enquiry acknowledgements, the unsubscribe line, Google keywords and ad text. Buyer research in those countries also searches in the local language.
 
-- **Change a country's language** in Settings → commercial settings → `languages`, for example `{"United Arab Emirates": "en"}` if your buyers there prefer English. Valid codes: `en`, `ar`, `tr`, `he`.
+- **Change a country's language** in Settings → commercial settings → `languages`, for example `{"United Arab Emirates": "en"}` if your buyers there prefer English. Valid codes: `en`, `ar`, `tr`, `he`, `fr`, `pt`. Cameroon is officially bilingual, so set `{"Cameroon": "en"}` if your buyers there prefer English.
 - **You always work in English.** In Reviews, a draft in another language is shown with its English version underneath, and the buyer's message with an English translation. To change a draft, edit the English version; your edit is translated into the buyer's language when you approve.
 - **How the safety rules are kept in other languages.** Text is checked three ways before it can be sent or published: every figure against your catalogue (in any script), a list of banned claims in that language (medical claims, approvals, "authorised distributor", "best price" and so on), and an independent translation back into English that must pass the same checks as an English message. A message without a verified back-translation is refused (rule R-FACT-03).
-- **Landing pages** in Arabic, Turkish or Hebrew get an English twin automatically, and each links to the other.
+- **Landing pages** in Arabic, Turkish, Hebrew, French or Portuguese get an English twin automatically, and each links to the other.
 - **Ads** are written and checked in English first, then translated; a translation that fails the limits or the checks is dropped, and if too few survive the campaign runs in English instead. The English source of every ad is shown in Reviews and on the Ads tab.
-- **Replies** are answered in the language the buyer wrote in. Opt-out requests are recognised in all four languages.
-- **Limits.** Translation is done by the AI model and verified by a second pass, not by a native speaker: before relying on it for a new market, have someone who reads the language look over one page and a few e-mails. Kurdish (northern Iraq) and Persian are not included. Supplier RFQs stay in English.
+- **Replies** are answered in the language the buyer wrote in. Opt-out requests are recognised in all five languages. Accents are ignored when checking banned claims and opt-outs, so a message that drops them is still caught.
+- **Limits.** Translation is done by the AI model and verified by a second pass, not by a native speaker: before relying on it for a new market, have someone who reads the language look over one page and a few e-mails. Kurdish (northern Iraq), Persian and Spanish (Equatorial Guinea) are not included, nor are Portuguese-speaking São Tomé and Cabo Verde beyond the default mapping. Supplier RFQs stay in English.
 
 ---
 
@@ -624,7 +654,7 @@ NEXUS plans, writes, launches, measures and improves ads on **Google Search** an
 
 - **Platform limits:** Google headlines up to 30 characters (3–15 of them), descriptions up to 90 (2–4); Meta headline up to 40, description up to 30, main text up to 500, an allowed call-to-action button.
 - **Facts:** every number must come from your catalogue or price book (the same fact check as e-mail).
-- **Claims:** no "guaranteed", "best/lowest price", "#1", "risk-free" and similar; used or refurbished goods never described as "new" or "factory sealed"; no implied manufacturer endorsement ("Apple certified", "manufacturer warranty"); no medical claims or approvals ("FDA approved", "CE marked") for medical equipment.
+- **Claims:** no "guaranteed", "best/lowest price", "#1", "risk-free" and similar; used or refurbished goods never described as "new" or "factory sealed", and new goods never as "refurbished" or "used" (what counts is the condition on your supplier offers); no implied manufacturer endorsement ("Apple certified", "manufacturer warranty"); no medical claims or approvals ("FDA approved", "CE marked") for medical equipment.
 - **Style:** no shouting in capitals, no repeated punctuation (both platforms reject these).
 
 A failing ad is replaced by a plain version built from facts; if that fails too, the campaign is not proposed.
@@ -696,7 +726,7 @@ For ads shown in the EU (Romania, Bulgaria and other member states), the EU Digi
 
 - NEXUS reads spend and clicks, not the platforms' ad-review status. If an ad is disapproved it simply shows no impressions; the platform e-mails you the reason.
 - Budgets are converted at the rate you set; a stale rate misstates spend in USD.
-- Languages are English, Arabic, Turkish and Hebrew (see "Languages" in section 15). Product names, conditions and warranty terms on pages are shown as written in your catalogue. The privacy notice is in English. Generated image cards for Arabic and Hebrew Meta ads carry English text, so upload real photos for those markets.
+- Languages are English, Arabic, Turkish, Hebrew, French and Portuguese (see "Languages" in section 15). Product names, conditions and warranty terms on pages are shown as written in your catalogue. The privacy notice is in English. Generated image cards for Arabic and Hebrew Meta ads carry English text, so upload real photos for those markets.
 - Meta's own lead forms and Instagram direct messages are not used; everything goes to your landing page.
 
 ---
@@ -945,7 +975,7 @@ These codes appear in the review queue, the System tab and the audit log. **Bloc
 | R-FUP-03 | block | Supplier follow-up cap reached |
 | R-FACT-01 | block | Unsupported figure or claim in the message |
 | R-FACT-02 | block | Message not personalised |
-| R-FACT-03 | block | A message written in Arabic, Turkish or Hebrew has no verified English back-translation |
+| R-FACT-03 | block | A message written in Arabic, Turkish, Hebrew, French or Portuguese has no verified English back-translation |
 | R-BUD-01 | block | Budget line or month exhausted |
 | R-ADS-00 | block | Ad launch while `ADS_ENABLED=false` (production) |
 | R-ADS-01 | block | Ad for a product line that is never advertised (pharmaceuticals) |

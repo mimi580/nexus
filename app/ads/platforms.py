@@ -38,6 +38,9 @@ ISO_NUMERIC = {
     "Saudi Arabia": 682, "United Arab Emirates": 784, "Qatar": 634, "Kuwait": 414, "Bahrain": 48,
     "Oman": 512, "Jordan": 400, "Lebanon": 422, "Iraq": 368, "Yemen": 887, "Israel": 376,
     "Palestine": 275, "Turkey": 792,
+    "Angola": 24, "Republic of the Congo": 178, "Gabon": 266, "Chad": 148, "Central African Republic": 140,
+    "Equatorial Guinea": 226, "Lesotho": 426, "Sao Tome and Principe": 678, "Comoros": 174, "Seychelles": 690,
+    "Eritrea": 232, "Libya": 434,
 }
 EU_COUNTRIES = {"Romania", "Bulgaria", "Greece", "Croatia", "Poland", "Hungary", "Slovakia", "Czechia",
                 "Slovenia", "Austria", "Germany", "France", "Italy", "Spain", "Portugal", "Netherlands",
@@ -47,6 +50,20 @@ EU_COUNTRIES = {"Romania", "Bulgaria", "Greece", "Croatia", "Poland", "Hungary",
 
 class AdPlatformError(Exception):
     """The platform refused or failed; message is safe to show the operator."""
+
+
+def require_targeting(countries: list[str], table: dict[str, Any], what: str) -> None:
+    """Refuse to build a campaign for a country that has no location code.
+
+    Silently dropping it would leave Google with no location criteria at all, which
+    targets every country, and Meta with an empty audience: both waste the budget.
+    """
+    missing = [c for c in countries if c not in table]
+    if missing or not countries:
+        raise AdPlatformError(
+            f"no {what} for {', '.join(missing) or 'any country'}; refusing to launch a campaign without a "
+            "location target (add the country to the platform tables in app/ads/platforms.py and app/tools/search.py)"
+        )
 
 
 @dataclass
@@ -182,6 +199,7 @@ class GoogleAdsPlatform:
         return ad
 
     def create(self, launch: Launch) -> dict[str, Any]:
+        require_targeting(launch.countries, ISO_NUMERIC, "Google location target")
         c = f"customers/{self.customer}"
         budget = self._mutate("campaignBudgets", [{"create": {
             "name": f"{launch.name} budget {launch.campaign_id}", "amountMicros": str(int(launch.daily_budget_native * 1_000_000)),
@@ -362,6 +380,7 @@ class MetaAdsPlatform:
         return creative["id"]
 
     def create(self, launch: Launch) -> dict[str, Any]:
+        require_targeting(launch.countries, COUNTRY_CODES, "Meta country code")
         campaign = self._post(f"{self.account}/campaigns", {
             "name": f"{launch.name} [{launch.campaign_id}]", "objective": "OUTCOME_TRAFFIC", "status": "PAUSED",
             "special_ad_categories": [], "is_adset_budget_sharing_enabled": "false",

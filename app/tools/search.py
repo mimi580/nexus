@@ -29,6 +29,8 @@ COUNTRY_CODES = {
     "Saudi Arabia": "SA", "United Arab Emirates": "AE", "Qatar": "QA", "Kuwait": "KW", "Bahrain": "BH",
     "Oman": "OM", "Jordan": "JO", "Lebanon": "LB", "Iraq": "IQ", "Yemen": "YE", "Israel": "IL",
     "Palestine": "PS", "Turkey": "TR",
+    "Republic of the Congo": "CG", "Gabon": "GA", "Chad": "TD", "Central African Republic": "CF",
+    "Equatorial Guinea": "GQ", "Lesotho": "LS", "Sao Tome and Principe": "ST",
 }
 
 

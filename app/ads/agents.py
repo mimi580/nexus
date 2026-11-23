@@ -269,8 +269,9 @@ class AdPlannerAgent(BaseAgent):
                    "call to action. " if platform == "google" else
                    "Meta: primary_text (2-4 short lines, the first line carries the angle and is under 125 "
                    "characters), headline under 40 characters, description under 30, call_to_action GET_QUOTE. ")
-                + "No superlatives, no guarantees, no 'new' for used goods, no manufacturer endorsement, no claims "
-                "that are not in the facts. Also suggest up to 15 high-intent buyer search keywords. "
+                + "No superlatives, no guarantees, no manufacturer endorsement, no claims that are not in the facts. "
+                "Describe the stock exactly as facts['stock'] says: only call goods new when it is 'new', never "
+                "call new goods refurbished or used, and for 'mixed' or 'unknown' do not say new at all. Also suggest up to 15 high-intent buyer search keywords. "
                 "Return {'variants': {angle: {...}}, 'keywords': []}."
             ), {"facts": facts, "angles": chosen, "platform": platform})
             cost += copy_cost
@@ -310,7 +311,7 @@ class AdPlannerAgent(BaseAgent):
         keywords, negatives, rejected_kw = adcopy.keyword_plan(
             facts, extra_keywords if language == "en" else None, language)
 
-        name = f"{adcopy.NOUN.get(category, category)} - {country} - {platform}"
+        name = f"{adcopy.noun_for(category, facts.get('stock'))} - {country} - {platform}"
         campaign = AdCampaign(
             platform=platform, name=name, product_category=category, countries=[country], language=language,
             status="proposed", daily_budget_usd=budget, landing_page_id=page.id,

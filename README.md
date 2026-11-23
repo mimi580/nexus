@@ -1,8 +1,10 @@
 # NEXUS AI
 
-An autonomous B2B sales, sourcing and outreach platform for refurbished laptops,
-used/refurbished iPhones, medical equipment, pharmaceutical products and
-servers/IT, operating in East Africa and selected other markets.
+An autonomous B2B sales, sourcing and outreach platform for laptops, iPhones,
+servers/IT, medical equipment and pharmaceutical products (new, used or
+refurbished stock), operating across East, Southern and Central Africa, the
+Middle East and selected other markets. See "What NEXUS covers" in the
+[user guide](docs/USER_GUIDE.md#what-nexus-covers).
 
 NEXUS researches markets, finds buyers from real web sources and business
 listings, finds their published contacts, qualifies and scores opportunities,
