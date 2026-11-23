@@ -9,8 +9,9 @@ NEXUS is an autonomous commercial-intelligence platform. Its first
 production capability is B2B sales, sourcing and outreach. Future Career
 agents must reuse the same core platform.
 
-**Initial products:** refurbished laptops; used/refurbished iPhones;
-medical equipment; pharmaceutical products; servers/IT equipment.
+**Initial products:** laptops; iPhones; medical equipment; pharmaceutical
+products; servers/IT equipment, each in new, used or refurbished condition
+(owner decision 2026-11-23).
 **Budget:** hard maximum USD 500/month (raised from 200 by the owner on
 2026-09-30 to fund advertising; operator-configurable, always a hard stop). **Autonomy:** fully autonomous
 within deterministic policy, compliance, financial, security and
@@ -30,10 +31,10 @@ Check → Act → Observe Result → Evaluate → Learn → Re-plan.**
 
 ### Products
 
--   Refurbished laptops: Dell Latitude, HP EliteBook/ProBook, Lenovo
-    ThinkPad and similar business-class machines.
--   Used/refurbished iPhones: used, professionally refurbished, and
-    legitimately available new/excess stock.
+-   Laptops (new or refurbished): Dell Latitude, HP EliteBook/ProBook,
+    Lenovo ThinkPad and similar business-class machines.
+-   iPhones (new, used or refurbished): used, professionally refurbished,
+    and legitimately available new/excess stock.
 -   Medical equipment: diagnostic, laboratory, monitoring, hospital and
     clinical equipment.
 -   Pharmaceutical products: legally tradable medicines, permitted OTC
@@ -43,14 +44,16 @@ Check → Act → Observe Result → Evaluate → Learn → Re-plan.**
 
 ### Markets
 
--   Medical, pharmaceutical and server/IT: Africa, with country
+-   Medical, pharmaceutical and server/IT: Africa (East, Southern and
+    Central Africa from 2026-11-23) and, for medical and pharmaceutical,
+    the Middle East, with country
     priorities discovered dynamically from demand, procurement,
     purchasing power, competition, regulation, logistics, payment risk,
     supplier availability, margins and historical conversion.
--   Used/refurbished iPhones: East Africa and other evidence-supported
+-   iPhones: East, Southern and Central Africa and other evidence-supported
     African markets; selected Central/Eastern/Southeastern European
     lower-income markets.
--   Laptops: Africa initially, including schools, universities, NGOs,
+-   Laptops: Africa (East, Southern and Central), including schools, universities, NGOs,
     businesses, institutions, hospitals, IT resellers and distributors.
 
 NEXUS must not permanently hard-code a "best country" ranking.
@@ -127,7 +130,7 @@ Evaluation/Learning, Audit, Execution, Dashboard.
     enquiries become deals, are acknowledged immediately and quoted
     through the human-approved reply path.
 14. **Advertising:** Google Search and Meta campaigns for every product
-    line except pharmaceuticals (never advertised). Plan markets, angles,
+    line (pharmaceuticals only when ADS_PHARMA_ENABLED=true, generic copy, always approved by the operator). Plan markets, angles,
     keywords and budgets from observed results; check every ad for
     platform limits, fact support and prohibited claims; launch with
     operator approval by default; book spend against the ads budget and

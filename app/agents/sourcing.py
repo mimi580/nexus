@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from app.agents.base import BaseAgent
-from app.core.context import RunContext
-from app.core.errors import UnknownInput
-from app.core.interfaces import AgentResult
-from app.core.types import EvidenceKind, ModelTier, Money, OpportunityStage, ProductCategory
-from app.database.models import Company, Opportunity
-from app.economics.calculator import DealInputs, compute_economics
 from app.commercial import catalogue
 from app.commercial import settings as commercial
+from app.core.context import RunContext
+from app.core.errors import UnknownInput
 from app.core.ids import stable_key
+from app.core.interfaces import AgentResult
+from app.core.types import EvidenceKind, ModelTier, Money, OpportunityStage
+from app.database.models import Company, Opportunity
+from app.economics.calculator import DealInputs, compute_economics
 
 AWAITING_OFFER = "awaiting supplier offer"
 AWAITING_PRICE = "awaiting selling price reference"

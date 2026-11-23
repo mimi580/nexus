@@ -1,4 +1,4 @@
-"""Languages NEXUS writes in besides English: Arabic, Turkish and Hebrew.
+"""Languages NEXUS writes in besides English: Arabic, Turkish, Hebrew, French and Portuguese.
 
 Everything language-specific that code (not the AI) is responsible for lives
 here: which language a country gets, right-to-left layout, the fixed wording
@@ -15,6 +15,7 @@ must pass the same checks as an English message.
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 ENGLISH = "en"
@@ -44,14 +45,17 @@ COUNTRY_NAMES = {
 }
 
 CATEGORY_NAMES = {
+    # Stock may be new or used/refurbished, so names never say which (the catalogue's condition does).
+    "en": {"medical_equipment": "medical equipment", "pharmaceutical": "pharmaceutical products",
+           "refurbished_laptop": "laptops", "used_iphone": "iPhones", "server_it": "servers and IT equipment"},
     "ar": {"medical_equipment": "المعدات الطبية", "pharmaceutical": "المنتجات الصيدلانية",
-           "refurbished_laptop": "أجهزة الكمبيوتر المحمولة المجددة", "used_iphone": "هواتف آيفون المستعملة",
+           "refurbished_laptop": "أجهزة الكمبيوتر المحمولة", "used_iphone": "هواتف آيفون",
            "server_it": "الخوادم ومعدات تقنية المعلومات"},
     "tr": {"medical_equipment": "tıbbi ekipman", "pharmaceutical": "ilaç ürünleri",
-           "refurbished_laptop": "yenilenmiş dizüstü bilgisayarlar", "used_iphone": "ikinci el iPhone'lar",
+           "refurbished_laptop": "dizüstü bilgisayarlar", "used_iphone": "iPhone'lar",
            "server_it": "sunucular ve BT ekipmanları"},
     "he": {"medical_equipment": "ציוד רפואי", "pharmaceutical": "מוצרי תרופות",
-           "refurbished_laptop": "מחשבים ניידים מחודשים", "used_iphone": "מכשירי אייפון משומשים",
+           "refurbished_laptop": "מחשבים ניידים", "used_iphone": "מכשירי אייפון",
            "server_it": "שרתים וציוד IT"},
 }
 
@@ -232,7 +236,7 @@ PLACE_QUERIES = {
 }
 
 # Google search-ad keywords (phrase match). Only medical equipment: it is the one
-# advertised line that targets these markets (pharmaceuticals are never advertised).
+# advertised line that targets these markets (pharmaceutical ads, when enabled, use the English bank).
 AD_KEYWORDS = {
     "ar": {"medical_equipment": [
         "مورد معدات طبية", "موردين اجهزة طبية", "شركة اجهزة طبية", "معدات مستشفيات", "اجهزة طبية بالجملة",
@@ -255,6 +259,19 @@ AD_NEGATIVES = {
     "he": ["דרושים", "משרות", "שכר", "חינם", "תיקון", "קורס", "הורדה", "השכרה", "תסמינים", "טיפול", "יד שנייה"],
 }
 
+# French and Portuguese (Central and Lusophone Southern Africa) live in their own module.
+from app.core import languages_extra as _extra  # noqa: E402
+
+LANGUAGES.update(_extra.LANGUAGES)
+COUNTRY_LANGUAGES.update(_extra.COUNTRY_LANGUAGES)
+for _base, _more in (
+    (COUNTRY_NAMES, _extra.COUNTRY_NAMES), (CATEGORY_NAMES, _extra.CATEGORY_NAMES), (STRINGS, _extra.STRINGS),
+    (OPT_OUT_PHRASES, _extra.OPT_OUT_PHRASES), (CLAIMS, _extra.CLAIMS),
+    (PROSPECT_QUERIES, _extra.PROSPECT_QUERIES), (PLACE_QUERIES, _extra.PLACE_QUERIES),
+    (AD_KEYWORDS, _extra.AD_KEYWORDS), (AD_NEGATIVES, _extra.AD_NEGATIVES),
+):
+    _base.update(_more)
+
 _AR_MARKS = re.compile(r"[ً-ْـ]")
 _AR_ALEF = str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا"})
 
@@ -272,8 +289,11 @@ def language_name(code: str | None) -> str:
 
 
 def normalise(text: str) -> str:
-    """Lower-case and fold Arabic spelling variants so phrase matching is not fooled by vowel marks."""
-    return _AR_MARKS.sub("", text or "").translate(_AR_ALEF).casefold()
+    """Lower-case and fold marks so phrase matching is not fooled by Arabic vowel marks, Hebrew points or
+    accents (a message that drops the accent in "approuvé" is still caught)."""
+    decomposed = unicodedata.normalize("NFKD", text or "")
+    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return _AR_MARKS.sub("", stripped).translate(_AR_ALEF).casefold()
 
 
 def t(code: str | None, key: str, **values: Any) -> str:
@@ -320,9 +340,9 @@ def claim_phrases(code: str | None, kinds: tuple[str, ...]) -> list[tuple[str, s
 
 
 def opt_out_in(text: str) -> bool:
-    """True when a reply contains an opt-out phrase in Arabic, Turkish or Hebrew."""
+    """True when a reply contains an opt-out phrase in any supported language."""
     folded = normalise(text)
-    for code, phrases in OPT_OUT_PHRASES.items():
+    for phrases in OPT_OUT_PHRASES.values():
         for phrase in phrases:
             p = normalise(phrase)
             if re.search(rf"(?<!\w){re.escape(p)}(?!\w)", folded):

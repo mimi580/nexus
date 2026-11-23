@@ -8,19 +8,23 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import select
-
 from app.agents.base import BaseAgent
 from app.agents.translate import back_translate, final_text, flatten
 from app.core import languages
 from app.core.context import RunContext
 from app.core.ids import stable_key
 from app.core.interfaces import ActionRequest, AgentResult
-from app.core.types import ActionKind, Decision, ModelTier, OpportunityStage, REGULATED_CATEGORIES, utcnow
+from app.core.types import (
+    REGULATED_CATEGORIES,
+    ActionKind,
+    Decision,
+    ModelTier,
+    OpportunityStage,
+)
+from app.database.models import Company, Contact, FollowUp, Message, Opportunity, ReviewItem
 from app.policies.licenses import coverage
 
 ROLE_MAILBOX_ROLE = "published role mailbox"  # mirrors app.agents.grounded
-from app.database.models import Company, Contact, FollowUp, Message, Interaction, Opportunity, ReviewItem
 
 SEND_COST_USD = 0.01  # per message, charged to the email category
 

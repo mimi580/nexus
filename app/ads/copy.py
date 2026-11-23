@@ -23,17 +23,31 @@ from app.site.pages import allowed_numbers
 
 C = ProductCategory
 
-NOUN = {
-    C.LAPTOP.value: "Refurbished Laptops",
-    C.IPHONE.value: "Refurbished iPhones",
-    C.MEDICAL.value: "Medical Equipment",
-    C.SERVER_IT.value: "Refurbished Servers",
+# The product name used in ads, by what the catalogue says the stock is (core.condition).
+_NOUNS = {
+    C.LAPTOP.value: {"new": "Laptops", "used": "Refurbished Laptops",
+                     "mixed": "New & Refurbished Laptops", "unknown": "Laptops"},
+    C.IPHONE.value: {"new": "iPhones", "used": "Refurbished iPhones",
+                     "mixed": "New & Used iPhones", "unknown": "iPhones"},
+    C.SERVER_IT.value: {"new": "Servers", "used": "Refurbished Servers",
+                        "mixed": "New & Refurbished Servers", "unknown": "Servers"},
 }
+STATIC_NOUNS = {C.MEDICAL.value: "Medical Equipment", C.PHARMA.value: "Pharmaceutical Supply"}
+
+
+def noun_for(category: str, stock: str | None = None, default: str | None = None) -> str:
+    by_stock = _NOUNS.get(category)
+    if by_stock is not None:
+        return by_stock.get(stock or "unknown", by_stock["unknown"])
+    return STATIC_NOUNS.get(category) or default or category
+
+
 BUYER_SHORT = {
     C.LAPTOP.value: "Schools, NGOs and Offices",
     C.IPHONE.value: "Phone Retailers",
     C.MEDICAL.value: "Hospitals and Clinics",
     C.SERVER_IT.value: "Banks, ISPs and Data Centres",
+    C.PHARMA.value: "Pharmacies and Hospitals",
 }
 
 KEYWORDS = {
@@ -56,12 +70,53 @@ KEYWORDS = {
         "refurbished medical equipment", "hospital equipment {country}", "medical equipment suppliers in {country}",
         "medical equipment distributor {country}",
     ],
+    # Pharmaceuticals (only when ADS_PHARMA_ENABLED): institutional supply, never a drug name.
+    C.PHARMA.value: [
+        "pharmaceutical wholesale supplier", "pharmaceutical distributor", "medical supplies distributor",
+        "hospital supplies distributor", "pharmaceutical supplier {country}", "pharmaceutical distributor {country}",
+        "medical consumables supplier {country}", "institutional pharmaceutical supply",
+    ],
     C.SERVER_IT.value: [
         "refurbished servers", "refurbished dell poweredge", "refurbished hpe proliant", "used servers supplier",
         "enterprise server supplier", "refurbished networking equipment", "server hardware supplier",
         "data centre equipment supplier", "refurbished servers {country}", "server suppliers in {country}",
     ],
 }
+
+# Buyer-intent keywords for stock the catalogue says is NEW (the bank above is for used/refurbished stock).
+NEW_KEYWORDS = {
+    C.LAPTOP.value: [
+        "laptops wholesale", "bulk laptops supplier", "laptops in bulk", "wholesale laptops supplier",
+        "business laptops wholesale", "new dell latitude", "new lenovo thinkpad", "new hp elitebook",
+        "laptops for schools", "laptops for ngos", "laptops wholesale {country}", "laptop suppliers in {country}",
+        "bulk laptops {country}",
+    ],
+    C.IPHONE.value: [
+        "iphones wholesale", "bulk iphones supplier", "wholesale iphone supplier", "iphone distributor",
+        "new iphones in bulk", "iphone wholesale {country}", "iphone suppliers {country}", "bulk iphones {country}",
+    ],
+    C.SERVER_IT.value: [
+        "server supplier", "enterprise server supplier", "new dell poweredge", "new hpe proliant",
+        "networking equipment supplier", "server hardware supplier", "data centre equipment supplier",
+        "servers {country}", "server suppliers in {country}",
+    ],
+}
+_USED_KEYWORD_RE = re.compile(r"refurbish|\bused\b|ex corporate|second hand|pre-?owned", re.IGNORECASE)
+
+
+def keywords_for(category: str, stock: str | None = None) -> list[str]:
+    """Keyword bank matching what is really in stock: never 'refurbished' for new goods, nor the reverse."""
+    used_bank = KEYWORDS.get(category, [])
+    new_bank = NEW_KEYWORDS.get(category)
+    if stock == "new":
+        if new_bank:
+            return list(new_bank)
+        return [k for k in used_bank if not _USED_KEYWORD_RE.search(k)]  # e.g. medical equipment
+    if stock == "mixed":
+        merged = list(used_bank) + list(new_bank or [])
+        return list(dict.fromkeys(merged))
+    return list(used_bank)
+
 
 NEGATIVES_COMMON = [
     "free", "jobs", "job", "vacancy", "vacancies", "salary", "career", "internship", "repair", "repairs",
@@ -74,6 +129,8 @@ NEGATIVES = {
                      "charger", "ringtone", "wallpaper"],
     C.MEDICAL.value: ["symptoms", "treatment", "disease", "nurse jobs", "doctor", "home use", "insurance"],
     C.SERVER_IT.value: ["minecraft", "discord", "vpn", "web hosting", "cloud server", "vps", "free server"],
+    C.PHARMA.value: ["symptoms", "side effects", "dosage", "dose", "price list", "online pharmacy", "buy online",
+                     "cheap", "pills", "tablets for", "cure", "home delivery", "prescription"],
 }
 
 ANGLES = ("price_value", "lead_time", "quality_warranty", "local_support", "compliance_docs", "range")
@@ -91,6 +148,16 @@ def _title(text: str) -> str:
 def available_angles(facts: dict[str, Any]) -> list[str]:
     """Angles the facts can support."""
     products = facts.get("products") or []
+    if facts.get("category") == C.PHARMA.value:
+        # Generic institutional supply only: no prices, ranges or drug names.
+        generic = []
+        if any(p.get("lead_time_days") for p in products):
+            generic.append("lead_time")
+        if facts.get("whatsapp") or facts.get("response_promise"):
+            generic.append("local_support")
+        if facts.get("licence_statement"):
+            generic.append("compliance_docs")
+        return generic
     angles = []
     if facts.get("from_price_usd"):
         angles.append("price_value")
@@ -126,7 +193,7 @@ def _price(value: float | None) -> str | None:
 def google_template(facts: dict[str, Any], angle: str) -> dict[str, Any]:
     """A responsive search ad (headlines ≤30, descriptions ≤90) led by one angle."""
     cat, country = facts["category"], facts["country"]
-    noun, af = NOUN.get(cat, facts["category_title"]), _angle_facts(facts)
+    noun, af = noun_for(cat, facts.get("stock"), facts["category_title"]), _angle_facts(facts)
     price = _price(af["price"])
     lead_heads = {
         "price_value": [f"From USD {price} per Unit" if price else None, "Volume Pricing on Request",
@@ -134,7 +201,7 @@ def google_template(facts: dict[str, Any], angle: str) -> dict[str, Any]:
         "lead_time": [f"Lead Time About {af['lead']} Days" if af["lead"] else None, "Stock Confirmed in Writing",
                       "Quote Before You Commit"],
         "quality_warranty": [_title(f"{af['warranty']} Warranty") if af["warranty"] else None,
-                             _title(af["condition"]) if af["condition"] else None, "Condition Graded in Writing"],
+                             _title(af["condition"]) if af["condition"] else None, ("Specs Confirmed in Writing" if facts.get("stock") == "new" else "Condition Graded in Writing")],
         "local_support": ["Order via WhatsApp" if facts.get("whatsapp") else None, f"Supplying {country}",
                           "Talk to a Real Person"],
         "compliance_docs": ["Licensed Distributor" if facts.get("licence_statement") else None,
@@ -155,7 +222,7 @@ def google_template(facts: dict[str, Any], angle: str) -> dict[str, Any]:
         "price_value": f"{noun} from USD {price} per unit. Send your quantity for a written quotation." if price else None,
         "lead_time": f"Typical lead time about {af['lead']} days. Tell us your quantity and delivery point." if af["lead"] else None,
         "quality_warranty": (f"{af['condition'] or 'Condition'} units" + (f" with {af['warranty']} warranty" if af["warranty"] else "")
-                             + ". Condition confirmed in writing."),
+                             + (". Specifications confirmed in writing." if facts.get("stock") == "new" else ". Condition confirmed in writing.")),
         "local_support": f"Supplying {facts['buyers']} in {country}. We reply {facts.get('response_promise') or 'quickly'}.",
         "compliance_docs": f"{facts.get('licence_statement') or ''}. Quotation with documents on request.",
         "range": f"Models include {', '.join(af['products'][:3])}. Request a quotation for your quantity.",
@@ -174,7 +241,7 @@ def google_template(facts: dict[str, Any], angle: str) -> dict[str, Any]:
 
 def meta_template(facts: dict[str, Any], angle: str) -> dict[str, Any]:
     cat, country = facts["category"], facts["country"]
-    noun, af = NOUN.get(cat, facts["category_title"]), _angle_facts(facts)
+    noun, af = noun_for(cat, facts.get("stock"), facts["category_title"]), _angle_facts(facts)
     price = _price(af["price"])
     opener = {
         "price_value": f"{noun} from USD {price} per unit for {facts['buyers']} in {country}.",
@@ -212,9 +279,16 @@ def keyword_plan(facts: dict[str, Any], extra: list[str] | None = None,
         base = [k.format(country=place) for k in local]
         local_negatives = languages.AD_NEGATIVES.get(language, [])
     else:
-        base = [k.format(country=country) for k in KEYWORDS.get(cat, [])]
+        base = [k.format(country=country) for k in keywords_for(cat, facts.get("stock"))]
         local_negatives = []
+    if cat == C.PHARMA.value:
+        extra = None  # model-suggested keywords could name drugs
     accepted, rejected = check_keywords(base + list(extra or []))
+    if cat == C.PHARMA.value:
+        from app.ads.compliance import PHARMA_RESTRICTED_TERMS
+
+        rejected += [k for k in accepted if any(t in k for t in PHARMA_RESTRICTED_TERMS)]
+        accepted = [k for k in accepted if not any(t in k for t in PHARMA_RESTRICTED_TERMS)]
     negatives = NEGATIVES_COMMON + NEGATIVES.get(cat, []) + local_negatives
     accepted = [k for k in accepted if not any(re.search(rf"\b{re.escape(n)}\b", k) for n in negatives)]
     return accepted[:40], negatives, rejected

@@ -14,7 +14,7 @@ from app.commercial import settings as commercial
 from app.core.config import Settings
 from app.core.context import build_context
 from app.core.interfaces import ModelRequest
-from app.core.types import Decision, ModelTier, OpportunityStage, ProductCategory
+from app.core.types import ModelTier, OpportunityStage, ProductCategory
 from app.database.models import Message, Outcome, ReviewItem, Task
 from app.models.providers.base import render_user_message
 from app.orchestrator.orchestrator import Orchestrator

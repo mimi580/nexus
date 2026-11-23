@@ -9,14 +9,13 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.agents.base import BaseAgent
 from app.core.context import RunContext
 from app.core.interfaces import AgentResult
 from app.core.types import ModelTier, OpportunityStage
 from app.database.models import Company, Interaction, Message, Opportunity
-
 
 POSITIVE_CATEGORIES = ("interested", "information_request", "price_request", "rfq", "negotiation")
 

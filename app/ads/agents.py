@@ -8,7 +8,7 @@
     convert   tell the platform which clicks became enquiries and sales, so its own
               bidding learns who your buyers are
 
-Pharmaceuticals are never advertised (R-ADS-01). Budget moves are bounded
+Pharmaceuticals are advertised only when ADS_PHARMA_ENABLED=true (R-ADS-01, R-ADS-04). Budget moves are bounded
 (±30% a day, never below the minimum) so one noisy day cannot swing spend.
 """
 
@@ -25,9 +25,9 @@ from app.ads.compliance import ad_allowed, english_meaning_issues
 from app.ads.platforms import AdPlatformError, Launch, SimulatedAdsPlatform, platform_for
 from app.agents.base import BaseAgent
 from app.agents.translate import back_translate, flatten, translate_fields
-from app.core import languages
 from app.commercial import catalogue
 from app.commercial import settings as commercial
+from app.core import languages
 from app.core.context import RunContext
 from app.core.ids import stable_key
 from app.core.interfaces import ActionRequest, AgentResult
@@ -183,13 +183,13 @@ class AdPlannerAgent(BaseAgent):
         if not platforms:
             return self.ok(output={"skipped": "no ad platform configured"})
 
-        # Which product lines can be advertised at all: never pharma; must have live offers.
+        # Which product lines can be advertised at all: pharma only when enabled; must have live offers.
         lines, notes = {}, []
         for category, countries in markets.items():
             if only_cat and category != only_cat:
                 continue
-            if not ad_allowed(category):
-                notes.append(f"{category}: never advertised (R-ADS-01)")
+            if not ad_allowed(category, ctx.settings.ads_pharma_enabled):
+                notes.append(f"{category}: not advertised (R-ADS-01; pharmaceuticals need ADS_PHARMA_ENABLED=true)")
                 continue
             if not catalogue.current_offers(ctx.session, category, today):
                 notes.append(f"{category}: no live supplier offer, nothing to advertise yet")
@@ -269,8 +269,9 @@ class AdPlannerAgent(BaseAgent):
                    "call to action. " if platform == "google" else
                    "Meta: primary_text (2-4 short lines, the first line carries the angle and is under 125 "
                    "characters), headline under 40 characters, description under 30, call_to_action GET_QUOTE. ")
-                + "No superlatives, no guarantees, no 'new' for used goods, no manufacturer endorsement, no claims "
-                "that are not in the facts. Also suggest up to 15 high-intent buyer search keywords. "
+                + "No superlatives, no guarantees, no manufacturer endorsement, no claims that are not in the facts. "
+                "Describe the stock exactly as facts['stock'] says: only call goods new when it is 'new', never "
+                "call new goods refurbished or used, and for 'mixed' or 'unknown' do not say new at all. Also suggest up to 15 high-intent buyer search keywords. "
                 "Return {'variants': {angle: {...}}, 'keywords': []}."
             ), {"facts": facts, "angles": chosen, "platform": platform})
             cost += copy_cost
@@ -310,7 +311,7 @@ class AdPlannerAgent(BaseAgent):
         keywords, negatives, rejected_kw = adcopy.keyword_plan(
             facts, extra_keywords if language == "en" else None, language)
 
-        name = f"{adcopy.NOUN.get(category, category)} - {country} - {platform}"
+        name = f"{adcopy.noun_for(category, facts.get('stock'))} - {country} - {platform}"
         campaign = AdCampaign(
             platform=platform, name=name, product_category=category, countries=[country], language=language,
             status="proposed", daily_budget_usd=budget, landing_page_id=page.id,

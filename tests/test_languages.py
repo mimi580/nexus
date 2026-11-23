@@ -47,12 +47,12 @@ def test_operator_can_switch_a_country_to_english(session):
     commercial.update(session, {"languages": {"UAE": "en"}})
     assert languages.language_for(session, "United Arab Emirates") == "en"
     with pytest.raises(commercial.CommercialSettingsError):
-        commercial.update(session, {"languages": {"Qatar": "fr"}})
+        commercial.update(session, {"languages": {"Qatar": "sw"}})
 
 
 def test_every_language_has_every_fixed_string():
     keys = set(languages.STRINGS["en"]) | {"err_many", "err_name", "err_email", "err_consent", "err_qty", "err_qty_range"}
-    for code in ("ar", "tr", "he"):
+    for code in ("ar", "tr", "he", "fr", "pt"):
         assert keys <= set(languages.STRINGS[code]), (code, keys - set(languages.STRINGS[code]))
         assert set(languages.CATEGORY_NAMES[code]) == {c.value for c in ProductCategory}
 

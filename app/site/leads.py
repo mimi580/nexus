@@ -22,7 +22,15 @@ from app.core.context import RunContext
 from app.core.ids import stable_key
 from app.core.interfaces import ActionRequest, AgentResult
 from app.core.types import ActionKind, Decision, ModelTier, OpportunityStage
-from app.database.models import AdCampaign, AdVariant, LandingPage, Lead, Message, Opportunity, PageEvent
+from app.database.models import (
+    AdCampaign,
+    AdVariant,
+    LandingPage,
+    Lead,
+    Message,
+    Opportunity,
+    PageEvent,
+)
 
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 MAX_ENQUIRIES_PER_VISITOR_HOUR = 5
@@ -193,7 +201,7 @@ class InboundLeadAgent(BaseAgent):
         lead.opportunity_id = opportunity.id
         enquiry = Message(
             opportunity_id=opportunity.id, contact_id=contact.id, direction="inbound",
-            subject=f"Website enquiry: {lead.product_category.replace('_', ' ')}",
+            subject=f"Website enquiry: {languages.category_name('en', lead.product_category)}",
             body=lead.message or "(no message)", status="processed", from_address=lead.email,
             dedupe_key=stable_key("enquiry", lead.id), simulated=ctx.settings.nexus_mode == "simulation",
         )
@@ -207,8 +215,7 @@ class InboundLeadAgent(BaseAgent):
         sender = ctx.settings.email_sender_name or ctx.settings.business_name or "NEXUS Sourcing"
 
         def ack(code: str) -> str:
-            topic = (lead.product_category.replace("_", " ") if code == "en"
-                     else languages.category_name(code, lead.product_category))
+            topic = languages.category_name(code, lead.product_category)
             return languages.t(
                 code, "ack", name=lead.full_name.split()[0], topic=topic,
                 qty=f" ({lead.quantity} {languages.t(code, 'units')})" if lead.quantity else "",
@@ -233,7 +240,7 @@ class InboundLeadAgent(BaseAgent):
             if message.status == "sent":
                 lead.status = "acknowledged"
         notify(ctx, f"New enquiry: {lead.organisation} ({lead.country})",
-               f"{lead.full_name}, {lead.email}\n{lead.product_category.replace('_', ' ')}"
+               f"{lead.full_name}, {lead.email}\n{languages.category_name('en', lead.product_category)}"
                f"{' x ' + str(lead.quantity) if lead.quantity else ''}\nSource: {lead.platform}\n{lead.message[:400]}\n"
                f"{dashboard_link(ctx.settings, '#pipeline')}",
                dedupe_key=f"lead:{lead.id}")

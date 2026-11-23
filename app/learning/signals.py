@@ -12,14 +12,23 @@ from __future__ import annotations
 
 import random
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import date, datetime
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.ids import stable_key
-from app.database.models import AdCampaign, AdMetric, AdVariant, Interaction, Lead, Message, Opportunity
+from app.database.models import (
+    AdCampaign,
+    AdMetric,
+    AdVariant,
+    Interaction,
+    Lead,
+    Message,
+    Opportunity,
+)
 from app.learning.bandits import CountArm, RateArm
 
 POSITIVE = ("interested", "information_request", "price_request", "rfq", "negotiation")

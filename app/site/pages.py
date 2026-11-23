@@ -17,15 +17,17 @@ from sqlalchemy import select
 
 from app.agents.base import BaseAgent
 from app.agents.translate import back_translate, translate_fields
-from app.core import languages
 from app.commercial import catalogue
+from app.core import languages
+from app.core.condition import stock_profile
 from app.core.context import RunContext
 from app.core.interfaces import AgentResult
-from app.core.types import ModelTier, ProductCategory, REGULATED_CATEGORIES
+from app.core.types import REGULATED_CATEGORIES, ModelTier, ProductCategory
 from app.database.models import LandingPage
 from app.policies.fact_check import NUMBER_RE, validate_message
 from app.policies.licenses import canonical_country, coverage
 
+# Used ONLY to build page addresses, so published links never change when the wording does.
 CATEGORY_TITLES = {
     ProductCategory.LAPTOP.value: "Refurbished business laptops",
     ProductCategory.IPHONE.value: "Used and refurbished iPhones",
@@ -33,6 +35,30 @@ CATEGORY_TITLES = {
     ProductCategory.PHARMA.value: "Pharmaceutical supplies",
     ProductCategory.SERVER_IT.value: "Enterprise servers and IT equipment",
 }
+
+# What a page or ad may call the stock, by what the catalogue says it is (core.condition).
+_DISPLAY_TITLES = {
+    ProductCategory.LAPTOP.value: {
+        "new": "Business laptops", "used": "Refurbished business laptops",
+        "mixed": "New and refurbished business laptops", "unknown": "Business laptops",
+    },
+    ProductCategory.IPHONE.value: {
+        "new": "iPhones", "used": "Used and refurbished iPhones",
+        "mixed": "New, used and refurbished iPhones", "unknown": "iPhones",
+    },
+    ProductCategory.SERVER_IT.value: {
+        "new": "Enterprise servers and IT equipment", "used": "Refurbished enterprise servers and IT equipment",
+        "mixed": "New and refurbished enterprise servers and IT equipment",
+        "unknown": "Enterprise servers and IT equipment",
+    },
+}
+
+
+def category_title(category: str, stock: str = "unknown") -> str:
+    by_stock = _DISPLAY_TITLES.get(category)
+    if by_stock is None:
+        return CATEGORY_TITLES.get(category, category)
+    return by_stock.get(stock, by_stock["unknown"])
 
 CATEGORY_BUYERS = {
     ProductCategory.LAPTOP.value: "schools, universities, NGOs and businesses",
@@ -79,6 +105,13 @@ def page_facts(ctx: RunContext, category: str, country: str, language: str = "en
         if row is not None and row.warranty:
             product["warranty"] = row.warranty
     price = catalogue.price_reference(ctx.session, category, country, today)
+    if category == ProductCategory.PHARMA.value:
+        # Pages and ads for medicines never name a product or quote a "from" price: they describe institutional
+        # supply only (the buyer's enquiry and your approved quotation carry the specifics).
+        lead = min((p["lead_time_days"] for p in products if p.get("lead_time_days")), default=None)
+        products = [{"name": "Pharmaceutical supply for institutions", "condition": None, "warranty": None,
+                     "lead_time_days": lead, "moq": None}]
+        price = None
     licence = None
     if category in {c.value for c in REGULATED_CATEGORIES}:
         cover = coverage(ctx.session, country, category, today)
@@ -86,10 +119,16 @@ def page_facts(ctx: RunContext, category: str, country: str, language: str = "en
             lic = cover.license
             licence = f"{lic.holder_name} is a licensed {' and '.join(lic.license_types)} in {lic.country}"
     s = ctx.settings
+    stock = stock_profile(o.get("condition") for o in offers)
+    warranties = [p["warranty"] for p in products if p.get("warranty")]
     return {
         "category": category,
         "language": language,
-        "category_title": CATEGORY_TITLES.get(category, category),
+        # What the whole catalogue line is (new / used / mixed / unknown); copy and ad rules key off this.
+        "stock": stock,
+        "sealed": stock == "new" and all("sealed" in (o.get("condition") or "").lower() for o in offers),
+        "manufacturer_warranty": any("manufacturer" in w.lower() for w in warranties),
+        "category_title": category_title(category, stock),
         "buyers": CATEGORY_BUYERS.get(category, "organisations"),
         "country": country,
         "products": products,
@@ -132,7 +171,7 @@ def check_content(content: dict[str, Any], facts: dict[str, Any]) -> list[str]:
         "relationship_verified": False,
     })
     issues = list(result.unsupported)
-    issues += claim_issues(text, facts["category"], language)
+    issues += claim_issues(text, facts["category"], language, facts)
     if not content.get("headline"):
         issues.append("missing headline")
     return issues

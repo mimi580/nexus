@@ -6,7 +6,7 @@ from app.agents.prospecting import DecisionMakerAgent, ProspectDiscoveryAgent
 from app.agents.qualification import OpportunityScoringAgent, QualificationAgent
 from app.agents.sourcing import SourcingAgent
 from app.core.types import OpportunityStage, ProductCategory
-from app.database.models import Company, ComplianceEvent, Contact, Opportunity
+from app.database.models import ComplianceEvent, Contact
 
 
 def test_market_scoring_penalises_risk_and_competition():

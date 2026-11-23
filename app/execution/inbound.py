@@ -20,9 +20,8 @@ from sqlalchemy import select
 
 from app.core.config import Settings
 from app.core.ids import stable_key
-from app.database.models import Contact, FollowUp, Message, Opportunity
-
 from app.core.languages import opt_out_in  # noqa: E402
+from app.database.models import Contact, FollowUp, Message, Opportunity
 
 OPT_OUT_RE = re.compile(r"\b(unsubscribe|remove me|opt[ -]?out|stop (?:emailing|contacting|sending))\b", re.I)
 BOUNCE_SENDERS = ("mailer-daemon", "postmaster", "mail delivery")

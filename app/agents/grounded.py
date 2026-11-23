@@ -46,7 +46,7 @@ PROSPECT_QUERIES = {
     ProductCategory.IPHONE.value: [
         "{country} mobile phone wholesaler",
         "{country} smartphone retail chain",
-        "{country} refurbished iPhone dealer",
+        "{country} iPhone dealer wholesale",
     ],
     ProductCategory.MEDICAL.value: [
         "{country} hospital tender medical equipment",

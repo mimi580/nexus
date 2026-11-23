@@ -14,8 +14,8 @@ from typing import Any
 
 from app.agents.base import BaseAgent
 from app.agents.translate import back_translate, final_text, flatten
-from app.core import languages
 from app.commercial import settings as commercial
+from app.core import languages
 from app.core.context import RunContext
 from app.core.ids import stable_key
 from app.core.interfaces import ActionRequest, AgentResult
@@ -107,7 +107,7 @@ def draft_reply(agent: BaseAgent, ctx: RunContext, message: Message, opportunity
             "number of days and subject to final confirmation of quantity, specification and delivery terms. "
             "Do not invent specifications, certifications, stock levels, delivery dates or discounts. If they "
             "ask for something not in the facts, say you will confirm it. Write the reply in the language "
-            "their message is written in (English, Arabic, Turkish or Hebrew); keep product and brand names "
+            "their message is written in (English, Arabic, Turkish, Hebrew, French or Portuguese); keep product and brand names "
             "and 'USD' in Latin letters and use Western digits. Return {'subject','body','language' (en, ar, "
             "tr or he),'their_message_english' (a literal English translation of their message, or null if "
             "it is already in English)}."

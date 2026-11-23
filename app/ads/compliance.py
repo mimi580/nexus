@@ -15,10 +15,21 @@ from typing import Any
 from app.core.types import ProductCategory
 from app.policies.fact_check import validate_message
 
-# Pharmaceuticals are never advertised: Google and Meta restrict prescription
-# drug ads to certified advertisers in a few countries, and a wrong ad is a
-# regulatory problem, not a marketing one.
+# Pharmaceuticals are not advertised unless the operator opts in (ADS_PHARMA_ENABLED): Google and Meta restrict
+# prescription drug ads to certified advertisers in a few countries, and a wrong ad is a regulatory problem,
+# not a marketing one.
 ADS_FORBIDDEN_CATEGORIES = {ProductCategory.PHARMA.value}
+
+# Pharmaceutical ads (only when ADS_PHARMA_ENABLED=true) stay at the level of institutional supply. Naming a
+# drug, or anything about prescription, controlled or lifestyle medicines, is what Google and Meta restrict
+# hardest, so these terms are refused in ad copy, keywords and the landing page text.
+PHARMA_RESTRICTED_TERMS = [
+    "prescription", "without a prescription", "no prescription", "controlled drug", "controlled substance",
+    "narcotic", "opioid", "tramadol", "codeine", "morphine", "fentanyl", "oxycodone", "diazepam", "alprazolam",
+    "xanax", "valium", "ketamine", "sildenafil", "viagra", "tadalafil", "cialis", "anabolic", "steroid",
+    "misoprostol", "mifepristone", "abortion", "weight loss", "slimming", "cannabis", "online pharmacy",
+    "buy online", "cures", "treats", "heals", "miracle",
+]
 
 BANNED_AD_PHRASES = [
     "guarantee", "guaranteed", "100%", "risk-free", "risk free", "best price", "lowest price",
@@ -27,7 +38,9 @@ BANNED_AD_PHRASES = [
 ]
 
 CATEGORY_BANNED = {
-    # Used and refurbished goods must never read as new.
+    # Used and refurbished goods must never read as new. (Relaxed per catalogue facts in claim_issues:
+    # "brand new" only when every offer is stated as new, "factory sealed" only when stated sealed,
+    # "manufacturer warranty" only when an offer's warranty says so.)
     ProductCategory.IPHONE.value: ["brand new", "factory sealed", "apple certified", "apple authorized",
                                    "apple authorised", "official apple", "genuine apple warranty"],
     ProductCategory.LAPTOP.value: ["brand new", "factory sealed", "dell certified", "hp certified",
@@ -35,6 +48,8 @@ CATEGORY_BANNED = {
     ProductCategory.SERVER_IT.value: ["brand new", "factory sealed", "manufacturer warranty"],
     ProductCategory.MEDICAL.value: ["fda approved", "fda-approved", "ce marked", "cures", "treats",
                                     "diagnoses", "clinically proven", "safe for all"],
+    ProductCategory.PHARMA.value: [*PHARMA_RESTRICTED_TERMS, "fda approved", "fda-approved", "who approved",
+                                   "clinically proven", "safe for all", "no side effects"],
 }
 
 GOOGLE_LIMITS = {"headline": 30, "description": 90, "headlines_min": 3, "headlines_max": 15,
@@ -43,18 +58,45 @@ META_LIMITS = {"primary_text": 500, "headline": 40, "description": 30}
 META_CTAS = {"GET_QUOTE", "CONTACT_US", "LEARN_MORE", "SHOP_NOW", "SEND_MESSAGE", "WHATSAPP_MESSAGE"}
 
 
-def ad_allowed(category: str) -> bool:
-    return category not in ADS_FORBIDDEN_CATEGORIES
+def ad_allowed(category: str, pharma_enabled: bool = False) -> bool:
+    """May this line be advertised? Pharmaceuticals only when the operator has switched them on."""
+    return category not in ADS_FORBIDDEN_CATEGORIES or (
+        category == ProductCategory.PHARMA.value and pharma_enabled)
 
 
-def claim_issues(text: str, category: str, language: str = "en") -> list[str]:
+# Words that would misdescribe stock the catalogue says is NEW.
+USED_WORDS_ON_NEW_STOCK = ["refurbished", "pre-owned", "second-hand", "second hand", "ex-lease", "renewed",
+                           "used laptop", "used iphone", "used server", "used equipment", "used phone"]
+
+
+def _relaxed_for(facts: dict[str, Any] | None) -> set[str]:
+    """Condition and warranty claims the catalogue supports (nothing is relaxed without facts)."""
+    facts = facts or {}
+    relaxed: set[str] = set()
+    if facts.get("stock") == "new":
+        relaxed.add("brand new")
+        if facts.get("sealed"):
+            relaxed.add("factory sealed")
+    if facts.get("manufacturer_warranty"):
+        relaxed.update({"manufacturer warranty", "genuine apple warranty"})
+    return relaxed
+
+
+def claim_issues(text: str, category: str, language: str = "en", facts: dict[str, Any] | None = None) -> list[str]:
+    """Banned claims in `text`. With `facts`, "new" wording is allowed only for stock the catalogue says is new."""
     lowered = text.lower()
+    new_stock = bool(facts) and facts.get("stock") == "new"
+    relaxed = _relaxed_for(facts)
     issues = [f"banned_claim:{p}" for p in BANNED_AD_PHRASES if p in lowered]
-    issues += [f"banned_claim:{p}" for p in CATEGORY_BANNED.get(category, []) if p in lowered]
-    if language != "en":  # the same rules in Arabic, Turkish and Hebrew
+    issues += [f"banned_claim:{p}" for p in CATEGORY_BANNED.get(category, []) if p in lowered and p not in relaxed]
+    if new_stock:  # and the other way round: never "refurbished" on new stock
+        issues += [f"misdescribes_condition:{p}" for p in USED_WORDS_ON_NEW_STOCK if p in lowered]
+    if language != "en":  # the same rules in Arabic, Turkish, Hebrew, French and Portuguese
         from app.core.languages import claim_phrases, normalise
 
-        kinds = ("ad", "medical", "regulatory") if category == ProductCategory.MEDICAL.value else ("ad", "new")
+        kinds = ("ad", "medical", "regulatory") if category in (
+            ProductCategory.MEDICAL.value, ProductCategory.PHARMA.value) else (
+            ("ad",) if new_stock else ("ad", "new"))
         folded = normalise(text)
         issues += [f"banned_claim:{p}" for _kind, p in claim_phrases(language, kinds) if p in folded]
     return issues
@@ -100,7 +142,7 @@ def check_google(content: dict[str, Any], category: str, facts: dict[str, Any], 
         issues.append("google: duplicate headlines")
     for text in heads + descs:
         issues += style_issues(text)
-    issues += claim_issues("\n".join(heads + descs), category, language)
+    issues += claim_issues("\n".join(heads + descs), category, language, facts)
     issues += _facts_check(heads + descs, facts, numbers, language)
     return issues
 
@@ -119,7 +161,7 @@ def check_meta(content: dict[str, Any], category: str, facts: dict[str, Any], nu
     texts = [content.get("headline") or "", content.get("primary_text") or "", content.get("description") or ""]
     for text in texts:
         issues += style_issues(text)
-    issues += claim_issues("\n".join(texts), category, language)
+    issues += claim_issues("\n".join(texts), category, language, facts)
     issues += _facts_check([t for t in texts if t], facts, numbers, language)
     return issues
 
@@ -129,7 +171,7 @@ def english_meaning_issues(text: str, category: str, facts: dict[str, Any], numb
 
     Length limits are not applied here: they belong to the text that actually runs.
     """
-    return claim_issues(text, category) + _facts_check([text], facts, numbers)
+    return claim_issues(text, category, "en", facts) + _facts_check([text], facts, numbers)
 
 
 def check_keywords(keywords: list[str]) -> tuple[list[str], list[str]]:

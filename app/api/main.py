@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, func, select
 
 from app.agents.learning import metrics
+from app.api.throttle import login_throttle
 from app.commercial import catalogue
 from app.commercial import settings as commercial
 from app.core.config import get_settings
@@ -41,9 +42,11 @@ from app.orchestrator.orchestrator import Orchestrator
 from app.policies.licenses import (
     LicenseError,
     add_license,
-    as_dict as lic_as_dict,
     deactivate_license,
     list_licenses,
+)
+from app.policies.licenses import (
+    as_dict as lic_as_dict,
 )
 from app.review import queue
 from app.scheduler.scheduler import Scheduler
@@ -54,7 +57,8 @@ DASHBOARD = Path(__file__).resolve().parent.parent / "dashboard" / "index.html"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):  # pragma: no cover - process lifecycle
     configure_logging()
-    create_all()
+    if get_settings().nexus_env != "production":
+        create_all()  # production schema comes only from Alembic migrations (the `migrate` service)
     yield
 
 
@@ -68,18 +72,30 @@ app = FastAPI(
 basic = HTTPBasic(auto_error=False)
 
 
-def require_operator(credentials: HTTPBasicCredentials | None = Depends(basic)) -> str:
+def require_operator(request: Request, credentials: HTTPBasicCredentials | None = Depends(basic)) -> str:
     settings = get_settings()
     username, password = settings.dashboard_username, settings.dashboard_password
     if not (username and password):
         if settings.nexus_env == "production" or settings.nexus_mode == "production":
             raise HTTPException(status_code=503, detail="set DASHBOARD_USERNAME and DASHBOARD_PASSWORD")
         return "operator"  # local development without a login
-    if credentials is None or not (
+    client = request.client.host if request.client else "unknown"
+    wait = login_throttle.retry_after(client)
+    if wait:
+        raise HTTPException(
+            status_code=429, detail="too many failed logins; try again later",
+            headers={"Retry-After": str(wait)},
+        )
+    if credentials is None:
+        # The browser's first, credential-less request is not a failed attempt.
+        raise HTTPException(status_code=401, detail="login required", headers={"WWW-Authenticate": "Basic realm=NEXUS"})
+    if not (
         secrets.compare_digest(credentials.username.encode(), username.encode())
         and secrets.compare_digest(credentials.password.encode(), password.encode())
     ):
+        login_throttle.record_failure(client)
         raise HTTPException(status_code=401, detail="login required", headers={"WWW-Authenticate": "Basic realm=NEXUS"})
+    login_throttle.record_success(client)
     return credentials.username
 
 
@@ -871,8 +887,8 @@ async def upload_asset(request: Request, category: str, caption: str = "", actor
     from app.ads.creative import normalise_photo
     from app.database.models import AdAsset
 
-    if category not in {c.value for c in ProductCategory} or not ad_allowed(category):
-        raise HTTPException(status_code=422, detail="unknown product line, or one that is never advertised")
+    if category not in {c.value for c in ProductCategory} or not ad_allowed(category, get_settings().ads_pharma_enabled):
+        raise HTTPException(status_code=422, detail="unknown product line, or one that is not advertised")
     raw = await request.body()
     if len(raw) > 8_000_000:
         raise HTTPException(status_code=413, detail="image over 8 MB")

@@ -30,32 +30,45 @@ from sqlalchemy import select
 from app.agents.base import BaseAgent
 from app.commercial import catalogue
 from app.commercial import settings as commercial
+from app.core import languages
 from app.core.context import RunContext
 from app.core.ids import stable_key
 from app.core.interfaces import ActionRequest, AgentResult
 from app.core.types import (
+    REGULATED_CATEGORIES,
     ActionKind,
     Decision,
     EvidenceKind,
     ModelTier,
     OpportunityStage,
     ProductCategory,
-    REGULATED_CATEGORIES,
 )
-from app.database.models import Company, Contact, Interaction, Message, Opportunity, ReviewItem, SupplierOffer, SupplierRFQ
+from app.database.models import (
+    Company,
+    Contact,
+    Interaction,
+    Message,
+    Opportunity,
+    ReviewItem,
+    SupplierOffer,
+    SupplierRFQ,
+)
 
 SUPPLIER_QUERIES = {
     ProductCategory.LAPTOP.value: [
         "{region} wholesale refurbished business laptops exporter",
         "{region} ITAD refurbished laptops bulk supplier Dell Latitude HP EliteBook",
+        "{region} authorised distributor new business laptops wholesale Dell HP Lenovo",
     ],
     ProductCategory.IPHONE.value: [
         "{region} wholesale used iPhones grade A bulk exporter",
         "{region} refurbished iPhone wholesaler",
+        "{region} wholesale new iPhones bulk distributor",
     ],
     ProductCategory.MEDICAL.value: [
         "{region} refurbished medical equipment exporter",
         "{region} hospital equipment distributor export to Africa",
+        "{region} medical equipment manufacturer new export Africa",
     ],
     ProductCategory.PHARMA.value: [
         "{region} WHO-GMP pharmaceutical manufacturer exporter Africa",
@@ -64,15 +77,19 @@ SUPPLIER_QUERIES = {
     ProductCategory.SERVER_IT.value: [
         "{region} refurbished servers networking equipment wholesale exporter",
         "{region} used enterprise IT equipment reseller export",
+        "{region} authorised distributor new servers networking Dell PowerEdge HPE ProLiant wholesale",
     ],
 }
 
 RELEVANT_CERTIFICATIONS = {
     ProductCategory.MEDICAL.value: ("iso 13485", "ce mark", "ce certified", "fda", "iso 9001"),
     ProductCategory.PHARMA.value: ("who-gmp", "who gmp", "gmp", "pic/s", "prequalif", "iso 9001"),
-    ProductCategory.LAPTOP.value: ("r2", "e-stewards", "iso 9001", "iso 14001", "microsoft authorized refurbisher", "rios"),
-    ProductCategory.IPHONE.value: ("r2", "e-stewards", "iso 9001", "iso 14001"),
-    ProductCategory.SERVER_IT.value: ("r2", "e-stewards", "iso 9001", "iso 14001", "rios"),
+    ProductCategory.LAPTOP.value: ("r2", "e-stewards", "iso 9001", "iso 14001", "microsoft authorized refurbisher", "rios",
+                                    "authorized distributor", "authorised distributor", "authorized reseller", "authorised reseller"),
+    ProductCategory.IPHONE.value: ("r2", "e-stewards", "iso 9001", "iso 14001", "authorized distributor",
+                                    "authorised distributor", "authorized reseller", "authorised reseller"),
+    ProductCategory.SERVER_IT.value: ("r2", "e-stewards", "iso 9001", "iso 14001", "rios", "authorized distributor",
+                                       "authorised distributor", "authorized reseller", "authorised reseller"),
 }
 
 FREE_MAIL = ("gmail.com", "yahoo.", "hotmail.", "outlook.com", "live.com", "qq.com", "163.com", "126.com", "aol.com", "icloud.com", "mail.ru")
@@ -122,7 +139,7 @@ def score_supplier(category: str, profile: dict[str, Any], contact_email: str | 
     if not own_domain:
         flags.append("no own website")
     if not products:
-        flags.append(f"no evidence it sells {category.replace('_', ' ')}")
+        flags.append(f"no evidence it sells {languages.category_name('en', category)}")
     if contact_email and any(contact_email.endswith("@" + d) or ("@" + d) in contact_email for d in FREE_MAIL):
         flags.append("free webmail address only")
     if not address:
@@ -256,7 +273,7 @@ class SupplierResearchAgent(BaseAgent):
         from app.tools.research import payload
 
         docs, doc_region = [], {}
-        per_region = min(2, max(1, int(ctx.settings.research_max_queries_per_task)))
+        per_region = min(3, max(1, int(ctx.settings.research_max_queries_per_task)))
         for region in regions:
             for template in SUPPLIER_QUERIES.get(category, ["{region} " + category + " supplier"])[:per_region]:
                 for doc in ctx.research.search(template.format(region=region), count=8):
@@ -274,7 +291,7 @@ class SupplierResearchAgent(BaseAgent):
             ctx,
             (
                 f"From these search results, list organisations that SELL {category} (manufacturers, "
-                "distributors, refurbishers, wholesalers). Only organisations NAMED in a result. Give the exact "
+                "authorised distributors, refurbishers, wholesalers; new or used/refurbished stock). Only organisations NAMED in a result. Give the exact "
                 "name, the source_id, a verbatim quote showing they sell it, their country if the result states "
                 "it, their own website if shown, and supplier_type. Return {'suppliers':[{'name','source_id',"
                 "'evidence_quote','country','website_url','supplier_type'}]}."
@@ -478,8 +495,8 @@ class SupplierRFQAgent(BaseAgent):
                 "sender_name": ctx.settings.email_sender_name or "NEXUS Sourcing",
                 "items": rfq.items,
                 "delivery": rfq.destination,
-                "please_quote": ["unit price and currency", "quantity available and MOQ", "condition grading",
-                                 "warranty", "lead time", "payment terms", "Incoterms (EXW/FOB and CIF Mombasa)",
+                "please_quote": ["unit price and currency", "quantity available and MOQ", "condition (new, new surplus, or refurbished/used grade)",
+                                 "warranty", "lead time", "payment terms", "Incoterms (EXW or FOB, plus CIF/DAP to the delivery point above)",
                                  "price validity"],
                 "documents_needed": settings["required_documents"].get(category, []) if regulated else [],
                 "license_statement": licence,
@@ -507,7 +524,7 @@ class SupplierRFQAgent(BaseAgent):
             summary=f"RFQ to {company.name} for {category}" + (f" (follow-up {step})" if step else ""),
             payload={
                 "contact_id": contact.id, "company_id": company.id, "to": contact.email,
-                "subject": copy.get("subject") or f"Request for quotation: {category.replace('_', ' ')}",
+                "subject": copy.get("subject") or f"Request for quotation: {languages.category_name('en', category)}",
                 "body": copy.get("body") or "", "personalized": True, "product_category": category,
                 "country": company.country, "step": step, "rfq_id": rfq.id, "counterparty": "supplier",
                 "allowed_facts": {"numbers": numbers, "license_verified": licence is not None},
@@ -642,7 +659,7 @@ def extract_quote(agent: BaseAgent, ctx: RunContext, message: Message, company: 
         if currency not in ISO_CURRENCIES:
             currency = "USD" if "usd" in text.lower() or "$" in text else "???"
 
-        def stated(key: str) -> int | None:
+        def stated(key: str, line: dict = line) -> int | None:
             value = line.get(key)
             return int(float(value)) if value is not None and _number_in(value, text) else None
 

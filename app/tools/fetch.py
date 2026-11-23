@@ -105,7 +105,9 @@ def is_public_host(host: str) -> bool:
     except socket.gaierror:
         return False
     for info in infos:
-        address = ipaddress.ip_address(info[4][0])
+        address = ipaddress.ip_address(info[4][0].split("%")[0])
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+            address = address.ipv4_mapped
         if (
             address.is_private or address.is_loopback or address.is_link_local
             or address.is_reserved or address.is_multicast or address.is_unspecified
@@ -118,8 +120,15 @@ class Fetcher(Protocol):
     def fetch(self, url: str) -> FetchedPage: ...
 
 
+MAX_REDIRECTS = 5
+
+
 class PageFetcher:
-    def __init__(self, settings: Settings, min_interval_seconds: float = 3.0) -> None:
+    def __init__(
+        self, settings: Settings, min_interval_seconds: float = 3.0,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
+        self._transport = transport
         self.user_agent = settings.fetch_user_agent
         self.max_bytes = settings.fetch_max_bytes
         self.timeout = settings.fetch_timeout_seconds
@@ -128,8 +137,10 @@ class PageFetcher:
         self._last_hit: dict[str, float] = {}
 
     def _client(self) -> httpx.Client:
+        # Redirects are followed by hand in fetch() so every hop is checked
+        # BEFORE it is requested (a redirect to an internal address must never be sent).
         return httpx.Client(
-            follow_redirects=True, timeout=self.timeout,
+            follow_redirects=False, timeout=self.timeout, transport=self._transport,
             headers={"User-Agent": self.user_agent, "Accept": "text/html,text/plain;q=0.9"},
         )
 
@@ -159,38 +170,50 @@ class PageFetcher:
                 time.sleep(delay)
         self._last_hit[host] = time.monotonic()
 
-    def fetch(self, url: str) -> FetchedPage:
+    def _check_target(self, client: httpx.Client, url: str):
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
             raise FetchRefused(f"unsupported URL: {url}")
         if not is_public_host(parsed.hostname):
             raise FetchRefused(f"host is not a public address: {parsed.hostname}")
+        if not self._allowed_by_robots(client, parsed):
+            raise FetchRefused(f"robots.txt disallows {url}")
+        return parsed
+
+    def fetch(self, url: str) -> FetchedPage:
+        current = url
         with self._client() as client:
-            if not self._allowed_by_robots(client, parsed):
-                raise FetchRefused(f"robots.txt disallows {url}")
-            self._wait_turn(parsed.hostname)
-            try:
-                with client.stream("GET", url) as response:
-                    final = urlparse(str(response.url))
-                    if final.hostname and not is_public_host(final.hostname):
-                        raise FetchRefused(f"redirected to a non-public host: {final.hostname}")
-                    content_type = response.headers.get("content-type", "").lower()
-                    if response.status_code >= 400:
-                        raise FetchRefused(f"HTTP {response.status_code} for {url}")
-                    if "html" not in content_type and "text/plain" not in content_type:
-                        raise FetchRefused(f"not a text page ({content_type or 'unknown type'})")
-                    chunks, size = [], 0
-                    for chunk in response.iter_bytes():
-                        chunks.append(chunk)
-                        size += len(chunk)
-                        if size >= self.max_bytes:
-                            break
-                    raw = b"".join(chunks)[: self.max_bytes]
-                    encoding = response.encoding or "utf-8"
-                    status = response.status_code
-                    final_url = str(response.url)
-            except httpx.HTTPError as exc:
-                raise FetchRefused(f"network error fetching {url}: {exc}") from exc
+            for _hop in range(MAX_REDIRECTS + 1):
+                parsed = self._check_target(client, current)
+                self._wait_turn(parsed.hostname)
+                try:
+                    with client.stream("GET", current) as response:
+                        if response.status_code in (301, 302, 303, 307, 308):
+                            location = response.headers.get("location")
+                            if not location:
+                                raise FetchRefused(f"redirect without a location from {current}")
+                            current = urljoin(current, location)
+                            continue
+                        content_type = response.headers.get("content-type", "").lower()
+                        if response.status_code >= 400:
+                            raise FetchRefused(f"HTTP {response.status_code} for {url}")
+                        if "html" not in content_type and "text/plain" not in content_type:
+                            raise FetchRefused(f"not a text page ({content_type or 'unknown type'})")
+                        chunks, size = [], 0
+                        for chunk in response.iter_bytes():
+                            chunks.append(chunk)
+                            size += len(chunk)
+                            if size >= self.max_bytes:
+                                break
+                        raw = b"".join(chunks)[: self.max_bytes]
+                        encoding = response.encoding or "utf-8"
+                        status = response.status_code
+                        final_url = current
+                except httpx.HTTPError as exc:
+                    raise FetchRefused(f"network error fetching {current}: {exc}") from exc
+                break
+            else:
+                raise FetchRefused(f"too many redirects fetching {url}")
         body = raw.decode(encoding, errors="replace")
         if "html" in content_type:
             title, text, links, mailtos = html_to_text(body)

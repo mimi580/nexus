@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 def utcnow() -> datetime:
     """Naive UTC. Every stored timestamp is UTC; naive keeps SQLite and
     PostgreSQL comparisons identical."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class TaskStatus(StrEnum):
@@ -144,7 +144,7 @@ class Money(BaseModel):
     basis: str = "unknown"
 
     @classmethod
-    def exact(cls, value: float, currency: str = "USD", basis: str = "given") -> "Money":
+    def exact(cls, value: float, currency: str = "USD", basis: str = "given") -> Money:
         return cls(low=value, high=value, currency=currency, confidence=1.0, basis=basis)
 
     @property
@@ -155,7 +155,7 @@ class Money(BaseModel):
     def is_range(self) -> bool:
         return self.high > self.low
 
-    def __add__(self, other: "Money") -> "Money":
+    def __add__(self, other: Money) -> Money:
         if other.currency != self.currency:
             raise ValueError("currency mismatch")
         return Money(

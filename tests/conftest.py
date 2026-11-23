@@ -4,11 +4,11 @@ from datetime import datetime, timedelta
 
 import pytest
 
+import app.database.models  # noqa: F401
 from app.core.config import Settings
 from app.core.context import build_context
 from app.database.base import Base
 from app.database.session import get_engine, get_session_factory, reset_engine
-import app.database.models  # noqa: F401
 
 
 class Clock:

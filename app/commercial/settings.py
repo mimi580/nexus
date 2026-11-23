@@ -16,12 +16,23 @@ from app.core.languages import COUNTRY_LANGUAGES, LANGUAGES
 from app.core.types import ProductCategory
 from app.database.models import SystemState
 from app.policies.licenses import REGIONS, canonical_country
+from app.tools.search import COUNTRY_CODES
 
 KEY = "commercial"
 
 # Medical equipment and pharmaceuticals also target the whole Middle East
 # (the licence register still decides what may be sent without your review).
 MIDDLE_EAST = list(REGIONS["MIDDLE_EAST"])
+
+# Default buyer markets by part of Africa. Other countries (Eswatini, Lesotho, Madagascar, Chad,
+# Equatorial Guinea, ...) can be added with `nexus settings set target_markets`.
+EAST_AFRICA = ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia"]
+SOUTHERN_AFRICA = ["Zambia", "South Africa", "Zimbabwe", "Malawi", "Mozambique", "Botswana", "Namibia", "Angola"]
+CENTRAL_AFRICA = ["Democratic Republic of the Congo", "Cameroon", "Republic of the Congo", "Gabon"]
+
+
+def _markets(*groups: list[str]) -> list[str]:
+    return list(dict.fromkeys(c for group in groups for c in group))
 
 DEFAULTS: dict[str, Any] = {
     "min_margin_pct": {c.value: 12.0 for c in ProductCategory},
@@ -45,11 +56,13 @@ DEFAULTS: dict[str, Any] = {
     # Countries research may consider per category. Market scores are recomputed
     # from evidence every cycle; this list only bounds where NEXUS looks.
     "target_markets": {
-        ProductCategory.MEDICAL.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Zambia", *MIDDLE_EAST],
-        ProductCategory.PHARMA.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Zambia", *MIDDLE_EAST],
-        ProductCategory.LAPTOP.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Nigeria", "Ghana"],
-        ProductCategory.SERVER_IT.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Ethiopia", "Nigeria", "Egypt"],
-        ProductCategory.IPHONE.value: ["Kenya", "Uganda", "Tanzania", "Rwanda", "Romania", "Bulgaria", "Serbia", "Moldova"],
+        ProductCategory.MEDICAL.value: _markets(EAST_AFRICA, SOUTHERN_AFRICA, CENTRAL_AFRICA, MIDDLE_EAST),
+        ProductCategory.PHARMA.value: _markets(EAST_AFRICA, SOUTHERN_AFRICA, CENTRAL_AFRICA, MIDDLE_EAST),
+        ProductCategory.LAPTOP.value: _markets(EAST_AFRICA, SOUTHERN_AFRICA, CENTRAL_AFRICA, ["Nigeria", "Ghana"]),
+        ProductCategory.SERVER_IT.value: _markets(EAST_AFRICA, SOUTHERN_AFRICA, CENTRAL_AFRICA, ["Nigeria", "Egypt"]),
+        ProductCategory.IPHONE.value: _markets(
+            ["Kenya", "Uganda", "Tanzania", "Rwanda"], SOUTHERN_AFRICA, CENTRAL_AFRICA,
+            ["Romania", "Bulgaria", "Serbia", "Moldova"]),
     },
     # Public directories searched (through the search API, "site:" queries) in
     # addition to the open web. The organisation's own site is always what
@@ -66,21 +79,21 @@ DEFAULTS: dict[str, Any] = {
     },
     # Where supplier research looks, per category.
     "supplier_regions": {
-        ProductCategory.LAPTOP.value: ["United Arab Emirates", "United States", "United Kingdom", "Germany", "China", "Kenya"],
-        ProductCategory.IPHONE.value: ["United Arab Emirates", "Hong Kong", "United States", "China"],
+        ProductCategory.LAPTOP.value: ["United Arab Emirates", "United States", "United Kingdom", "Germany", "China", "Kenya", "South Africa"],
+        ProductCategory.IPHONE.value: ["United Arab Emirates", "Hong Kong", "United States", "China", "South Africa"],
         ProductCategory.MEDICAL.value: ["United States", "Germany", "Netherlands", "India", "China", "United Arab Emirates"],
         ProductCategory.PHARMA.value: ["India", "China", "Kenya", "Egypt"],
-        ProductCategory.SERVER_IT.value: ["United Arab Emirates", "United States", "United Kingdom", "Netherlands", "Germany"],
+        ProductCategory.SERVER_IT.value: ["United Arab Emirates", "United States", "United Kingdom", "Netherlands", "Germany", "South Africa"],
     },
     # What an RFQ asks suppliers to quote for (quantities come from live demand).
     "rfq_products": {
-        ProductCategory.LAPTOP.value: "business-class refurbished laptops (Dell Latitude, HP EliteBook/ProBook, Lenovo ThinkPad), Intel Core i5/i7 8th generation or newer, 8-16GB RAM, SSD",
-        ProductCategory.IPHONE.value: "used / refurbished Apple iPhones (iPhone 11 to current generations), grade A and B, unlocked",
+        ProductCategory.LAPTOP.value: "business-class laptops, new or refurbished (Dell Latitude, HP EliteBook/ProBook, Lenovo ThinkPad), Intel Core i5/i7 8th generation or newer, 8-16GB RAM, SSD",
+        ProductCategory.IPHONE.value: "Apple iPhones, new or used/refurbished (iPhone 11 to current generations; grade A and B for used), unlocked",
         ProductCategory.MEDICAL.value: "new or refurbished hospital equipment: patient monitors, ultrasound, ECG, laboratory analysers",
         ProductCategory.PHARMA.value: "generic essential medicines and medical consumables for institutional supply",
-        ProductCategory.SERVER_IT.value: "refurbished enterprise servers (Dell PowerEdge, HPE ProLiant), storage and networking equipment",
+        ProductCategory.SERVER_IT.value: "enterprise servers, new or refurbished (Dell PowerEdge, HPE ProLiant), storage and networking equipment",
     },
-    # Language NEXUS writes in per country (e-mails, landing pages, ads): "en", "ar", "tr" or "he".
+    # Language NEXUS writes in per country (e-mails, landing pages, ads): "en", "ar", "tr", "he", "fr" or "pt".
     # Countries not listed use English. Set a country to "en" if your buyers there prefer English.
     "languages": dict(COUNTRY_LANGUAGES),
     "rfq_destination": "Nairobi, Kenya (CIF Mombasa or DAP Nairobi)",
@@ -100,6 +113,23 @@ def get(session: Session) -> dict[str, Any]:
         value = stored.get(key, default)
         merged[key] = {**default, **value} if isinstance(default, dict) else value
     return merged
+
+
+def reset(session: Session, keys: list[str]) -> dict[str, Any]:
+    """Drop your saved value for these settings so the built-in defaults apply again.
+
+    Saving any setting stores every current default alongside it, so after an update that
+    changes the defaults (new markets, new languages) a deployment that has saved settings
+    keeps the old ones until they are reset.
+    """
+    unknown = [k for k in keys if k not in DEFAULTS]
+    if unknown or not keys:
+        raise CommercialSettingsError(f"unknown settings {unknown or keys}; valid: {sorted(DEFAULTS)}")
+    row = session.get(SystemState, KEY)
+    if row is not None:
+        row.value = {k: v for k, v in dict(row.value).items() if k not in keys}
+        session.flush()
+    return get(session)
 
 
 def update(session: Session, changes: dict[str, Any]) -> dict[str, Any]:
@@ -148,7 +178,14 @@ def update(session: Session, changes: dict[str, Any]) -> dict[str, Any]:
                     raise CommercialSettingsError(f"unknown category {cat!r}")
                 if not isinstance(countries, list) or not all(isinstance(c, str) and c.strip() for c in countries):
                     raise CommercialSettingsError("target_markets values are lists of country names")
-                current[key][cat] = [canonical_country(c) for c in countries]
+                named = [canonical_country(c) for c in countries]
+                unknown = [c for c in named if c not in COUNTRY_CODES]
+                if unknown:
+                    raise CommercialSettingsError(
+                        f"unknown countries {unknown}: names must match NEXUS's country list "
+                        "(app/tools/search.py COUNTRY_CODES); check the spelling"
+                    )
+                current[key][cat] = named
         elif key in ("directories", "supplier_regions", "rfq_products"):
             if not isinstance(value, dict):
                 raise CommercialSettingsError(f"{key} must be an object")

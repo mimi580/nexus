@@ -21,6 +21,7 @@ PALETTES = {
     "used_iphone": ((24, 24, 27), (56, 189, 248)),
     "medical_equipment": ((8, 80, 90), (255, 255, 255)),
     "server_it": ((30, 41, 59), (74, 222, 128)),
+    "pharmaceutical": ((15, 76, 92), (226, 232, 240)),
 }
 FONT_DIRS = ("/usr/share/fonts/truetype/dejavu", "/usr/share/fonts/dejavu", "C:/Windows/Fonts")
 

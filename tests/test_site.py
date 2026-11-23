@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from app.core.config import reset_settings_cache
-from app.database.session import reset_engine, session_scope
+from app.database.session import reset_engine
 
 
 @pytest.fixture

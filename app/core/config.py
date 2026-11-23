@@ -6,7 +6,7 @@ import json
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Default monthly ceiling. The operator sets the actual ceiling with
@@ -118,6 +118,9 @@ class Settings(BaseSettings):
     # --- advertising ------------------------------------------------------------
     ads_enabled: bool = False
     ads_require_launch_approval: bool = True  # new campaigns wait for you; optimisation is automatic
+    # Pharmaceutical ads are OFF unless you turn them on. When on, they stay generic (no drug names, no prices),
+    # need a licence covering the country, and every campaign waits for your approval whatever the line above says.
+    ads_pharma_enabled: bool = False
     ads_default_daily_budget_usd: float = 5.0
     ads_min_daily_budget_usd: float = 1.0
     ads_target_cost_per_lead_usd: float = 15.0

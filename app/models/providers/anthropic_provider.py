@@ -14,7 +14,7 @@ from app.core.config import Settings
 from app.core.errors import ProviderError, ProviderUnavailable
 from app.core.interfaces import ModelRequest, ModelResponse
 from app.core.types import ModelTier
-from app.models.providers.base import BaseProvider, price, render_user_message
+from app.models.providers.base import BaseProvider, price, render_system, render_user_message
 
 API_URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"
@@ -41,8 +41,7 @@ class AnthropicProvider(BaseProvider):
             "max_tokens": request.max_output_tokens,
             "messages": [{"role": "user", "content": render_user_message(request)}],
         }
-        if request.system:
-            payload["system"] = request.system
+        payload["system"] = render_system(request)
         headers = {
             "x-api-key": self._api_key,
             "anthropic-version": API_VERSION,

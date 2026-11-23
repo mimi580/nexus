@@ -48,6 +48,20 @@ REGIONS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# Southern and Central Africa (membership as published by each bloc, checked 2026-11-23):
+# SADC 16 states (sadc.int); ECCAS 11 states; CEMAC 6 states, the monetary/customs union inside ECCAS.
+REGIONS["SADC"] = (
+    "Angola", "Botswana", "Comoros", "Democratic Republic of the Congo", "Eswatini", "Lesotho", "Madagascar",
+    "Malawi", "Mauritius", "Mozambique", "Namibia", "Seychelles", "South Africa", "Tanzania", "Zambia", "Zimbabwe",
+)
+REGIONS["ECCAS"] = (
+    "Angola", "Burundi", "Cameroon", "Central African Republic", "Chad", "Democratic Republic of the Congo",
+    "Equatorial Guinea", "Gabon", "Republic of the Congo", "Rwanda", "Sao Tome and Principe",
+)
+REGIONS["CEMAC"] = (
+    "Cameroon", "Central African Republic", "Chad", "Equatorial Guinea", "Gabon", "Republic of the Congo",
+)
+
 # The Middle East as NEXUS targets it. Iran and Syria are left out on purpose:
 # they are under comprehensive sanctions, banks and ad platforms will not serve
 # them, and trade there needs specific legal clearance. Name them explicitly
@@ -72,6 +86,17 @@ COUNTRY_ALIASES = {
     "dr congo": "Democratic Republic of the Congo",
     "congo-kinshasa": "Democratic Republic of the Congo",
     "democratic republic of congo": "Democratic Republic of the Congo",
+    "republic of the congo": "Republic of the Congo",
+    "republic of congo": "Republic of the Congo",
+    "congo republic": "Republic of the Congo",
+    "congo-brazzaville": "Republic of the Congo",
+    "congo (brazzaville)": "Republic of the Congo",
+    "congo brazzaville": "Republic of the Congo",
+    "car": "Central African Republic",
+    "rsa": "South Africa",
+    "republic of south africa": "South Africa",
+    "são tomé and príncipe": "Sao Tome and Principe",
+    "sao tome": "Sao Tome and Principe",
     "swaziland": "Eswatini",
     "united republic of tanzania": "Tanzania",
     "the sudan": "Sudan",

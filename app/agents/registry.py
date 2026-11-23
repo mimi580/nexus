@@ -12,9 +12,9 @@ from app.agents.prospecting import (
 )
 from app.agents.qualification import OpportunityScoringAgent, QualificationAgent
 from app.agents.reply import ReplyAgent
-from app.agents.suppliers import SupplierProfileAgent, SupplierResearchAgent, SupplierRFQAgent
 from app.agents.response import ResponseAgent
 from app.agents.sourcing import SalesStrategyAgent, SourcingAgent
+from app.agents.suppliers import SupplierProfileAgent, SupplierResearchAgent, SupplierRFQAgent
 from app.site.leads import InboundLeadAgent, InboundQuoteAgent
 from app.site.pages import LandingPageAgent
 

@@ -1,5 +1,5 @@
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.agents.base import BaseAgent
 from app.core.errors import NexusError

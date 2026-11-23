@@ -291,6 +291,13 @@ def cmd_settings(args: argparse.Namespace) -> int:
                 print(f"error: {exc}", file=sys.stderr)
                 return 2
             print(json.dumps(value[args.key], indent=2))
+        elif args.settings_command == "reset":
+            try:
+                value = commercial.reset(session, args.keys)
+            except commercial.CommercialSettingsError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            print(json.dumps({k: value[k] for k in args.keys}, indent=2))
         else:
             print(json.dumps(commercial.get(session), indent=2))
     return 0
@@ -462,6 +469,8 @@ def main(argv: list[str] | None = None) -> int:
     st_set = st_sub.add_parser("set", help='e.g. settings set min_margin_pct \'{"pharmaceutical": 15}\'')
     st_set.add_argument("key")
     st_set.add_argument("value", help="JSON value")
+    st_reset = st_sub.add_parser("reset", help="go back to the built-in default, e.g. settings reset target_markets languages")
+    st_reset.add_argument("keys", nargs="+")
     st.set_defaults(func=cmd_settings)
 
     rs = sub.add_parser("research", help="run one live search (tests SEARCH_API_KEY)")
